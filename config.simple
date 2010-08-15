@@ -1,0 +1,6 @@
+# Simplified config.example, which will be sufficient to
+# replace libetc.
+
+m#^(?!\.)# .
+m#^\.(cache|config|local)# .
+m#^\.# .config/

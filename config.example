@@ -1,0 +1,16 @@
+# Fast pruning (for performances): ignore non-dotfiles
+m#^(?!\.)# .
+
+# Ignore .cache/*, .config/*, .local/*
+m#^\.(cache|config|local)# .
+
+# Move some files to .cache
+m#^\.(?=gtk-bookmarks|mysql_history)# .cache/
+
+# Forbid "busybox" to rewrite anything
+- /^\S*busybox/
+/^/ .
+
+# All other programs have their dotfiles rewritten
+- //
+m#^\.# .config/
