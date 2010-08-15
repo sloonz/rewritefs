@@ -1,0 +1,297 @@
+.\" generated with Ronn/v0.5
+.\" http://github.com/rtomayko/ronn/
+.
+.TH "REWRITEFS" "1" "August 2010" "" ""
+.
+.SH "NAME"
+\fBrewritefs\fR \-\- mod_rewrite\-like FUSE filesystem
+.
+.SH "Description"
+\fBrewritefs\fR is a FUSE filesystem similar to web servers mod_rewrite. It can
+change the name of accessed files on\-the\-fly.
+.
+.P
+The short story: I needed a tool to managed my dotfiles. I forked Luc Dufrene's
+libetc [http://ordiluc.net/fs/libetc/] (mainly for small fixes), which can be
+described like this:
+.
+.IP "" 4
+.
+.nf
+
+On my system I had way too much dotfiles:
+.
+.IP
+% ls \-d ~/.* | wc \-l
+421
+.
+.IP
+For easier maintenance I wrote libetc. It is a LD_PRELOAD\-able shared library
+that intercepts file operations: if a program tries to open a dotfile in
+$HOME, it is redirected to $XDG_CONFIG_HOME (as defined by freedesktop:
+http://standards.freedesktop.org/basedir\-spec/basedir\-spec\-0.6.html).
+.
+.IP
+You can then store all your config files in $XDG_CONFIG_HOME instead of using
+zillions dotfiles in $HOME. If $XDG_CONFIG_HOME is not defined the dotfiles
+are stored in $HOME/.config/
+.
+.fi
+.
+.IP "" 0
+.
+.P
+Unfortunately, I eventually run into LD_PRELOAD problems (mainly with programs
+using dlopen like VirtualBox and screen). So I decided to rewrite it using
+FUSE, and to make it more generic.
+.
+.SH "Invocation"
+You write your configuration file (see below), and then you mount the "mirror"
+filesystem, for example :
+.
+.IP "" 4
+.
+.nf
+
+rewritefs \-o config=/mnt/home/me/.config/rewritefs /mnt/home/me /home/me
+.
+.fi
+.
+.IP "" 0
+.
+.P
+Then, accessing to files in /home/me will follow rules defined in your config
+file.
+.
+.SH "Configuration"
+The Regexp syntax is similar to Perl. Recognized flags are : \fBi\fR, \fBx\fR, \fBu\fR.
+Example of valid regexps are:
+.
+.IP "" 4
+.
+.nf
+
+/foo/i
+m/fOo/u
+m/dev\\/null/
+m|tata|
+m|This\\sis
+    \\san\\sextended
+    \\sregexep|x
+.
+.fi
+.
+.IP "" 0
+.
+.P
+Note that m{foo} is not recognized ; you must use m{foo{
+.
+.P
+\fBi\fR and \fBx\fR has the same meaning than in Perl. \fBu\fR means "use utf\-8" (both for
+pattern and input string).
+.
+.P
+The syntax is pretty simple, and has three types of elements:
+.
+.SS "Command line match"
+Syntax: \fB\-\fR \fIREGEXP\fR
+.
+.P
+Limit the following rules to programs matching REGEXP (comparing with the
+content of /proc/(pid)/cmdline, replacing null characters with spaces)
+.
+.SS "Rewrite rule"
+Syntax: \fIREGEXP\fR \fIrewritten\-path\fR
+.
+.P
+A file matching REGEXP will be rewritten to rewritten\-path. To be more
+accurate, the matched data will be replaced by rewritten\-path in the
+filename. For example, with this rule:
+.
+.IP "" 4
+.
+.nf
+
+/fo/ ba
+.
+.fi
+.
+.IP "" 0
+.
+.P
+accessing to foo will be translated into bao. Warning, if you don't
+start your regexp with \fB^\fR, "information" will be rewritten into
+"inbamation" !
+.
+.P
+If rewritten\-path is \fB.\fR, it means "don't rewrite anything".
+.
+.P
+. and .. will never be proposed to be translated.
+.
+.P
+You can access to matched parenthesis with \\1, \\2... (not yet implemented)
+.
+.P
+A regular expression can be written in more than one line, in particular in
+conjunction with the \fBx\fR flag.
+.
+.SS "Comment"
+A line starting with "##"
+.
+.SH "Installation"
+.
+.nf
+
+make && sudo make install
+.
+.fi
+.
+.SH "Dependencies"
+fuse & pcre. That's all.
+.
+.P
+To use contexts, you need /proc/(pid)/cmdline. But don't use contexts if you
+can avoid it !
+.
+.SH "Performances"
+Some rules to keep the overhead smallest possible :
+.
+.IP "\(bu" 4
+use the fast pruning technique described in config.example
+.
+.IP "\(bu" 4
+avoid using contexts whenever you can
+.
+.IP "\(bu" 4
+avoid using backreferences in your regexp (\\1)
+.
+.IP "\(bu" 4
+avoid using backreferences in your rewritten path. You can generally avoid
+them by using lookarounds.
+.
+.IP "" 0
+.
+.P
+For example, instead of writing:
+.
+.IP "" 4
+.
+.nf
+
+/\\.(gtk\-bookmarks|mysql_history)/ .cache/\\1
+.
+.fi
+.
+.IP "" 0
+.
+.P
+you can write the more efficient:
+.
+.IP "" 4
+.
+.nf
+
+/\\.(?=gtk\-bookmarks|mysql_history)/ .cache/
+.
+.fi
+.
+.IP "" 0
+.
+.P
+I urge you to read "Mastering regular expressions" if you want to make
+rules substantially different from the example.
+.
+.SH "Usage with mount(8) or fstab(5)"
+.
+.nf
+
+mount.fuse rewritefs##/mnt/home/me /home/me \-o config=/mnt/home/me/.config/rewritefs,allow_other,default_permissions
+.
+.fi
+.
+.P
+allow_other and default_permissions is here to allow standards users to access
+the filesystem with standard permissions.
+.
+.P
+So, you can use the fstab entry:
+.
+.IP "" 4
+.
+.nf
+
+rewritefs##/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other,default_permissions 0 0
+.
+.fi
+.
+.IP "" 0
+.
+.P
+See rewritefs \-\-help for all FUSE options.
+.
+.SH "Usage with pam_mount(8)"
+Let's suppose that you want to use rewritefs to replace libetc (it's its
+primary goal, after all). You need to mount the rewritefs on your home when
+you login. This can be achieved with pam_mount.
+.
+.P
+Let's say you have your raw home dirs in /mnt/home/$USER. Then, to use
+rewritefs on /home/$USER with configuration file stored at
+/mnt/home/$USER/.config/rewritefs, you need to add this to pam_mount.xml:
+.
+.IP "" 4
+.
+.nf
+
+<volume fstype="fuse" path="rewritefs##/mnt/home/%(USER)" mountpoint="~"
+     options="config=/mnt/home/%(USER)/.config/rewritefs,allow_other,default_permissions" />
+.
+.fi
+.
+.IP "" 0
+.
+.P
+You can add user="me" to limit this to yourself (but think to create symlinks
+for other users !)
+.
+.P
+Don't forget to activate pam_mount in your pam configuration too. This is
+distribution\-dependent ; you have to refer to the corresponding documentation.
+.
+.SH "Examples"
+.
+.SS "Example 1"
+This simple example show how to achieve the same effect than libetc:
+.
+.IP "" 4
+.
+.nf
+
+m#^(?!\\.)# .
+m#^\\.(cache|config|local)# .
+m#^\\.# .config/
+.
+.fi
+.
+.IP "" 0
+.
+.SS "Example 2"
+This example show how to use contexts ; it is like the former, but ignore the rewrite
+rules for busybox:
+.
+.IP "" 4
+.
+.nf
+
+m#^(?!\\.)# .
+m#^\\.(cache|config|local)# .
+\- /^\\S*busybox/
+/^/ .
+\- //
+m#^\\.# .config/
+.
+.fi
+.
+.IP "" 0
+

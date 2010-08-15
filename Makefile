@@ -1,5 +1,6 @@
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/share/man
 CFLAGS = -Wall -O2
 LDFLAGS = 
 
@@ -22,4 +23,6 @@ clean:
 
 install: rewritefs
 	install -d $(DESTDIR)$(BINDIR)
+	install -d $(DESTDIR)$(MANDIR)/man1
 	install --mode=755 rewritefs $(DESTDIR)$(BINDIR)
+	install --mode=644 rewritefs.1 $(DESTDIR)$(MANDIR)/man1
