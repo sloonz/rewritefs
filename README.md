@@ -78,7 +78,7 @@ filename. For example, with this rule:
     /fo/ ba
 
 accessing to foo will be translated into bao. Warning, if you don't
-start your regexp with **^**, "information" will be rewritten into
+start your regexp with `^`, "information" will be rewritten into
 "inbamation" !
   
 If rewritten-path is **.**, it means "don't rewrite anything".
