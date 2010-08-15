@@ -1,6 +1,6 @@
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
-CFLAGS = -Wall -O0 -g
+CFLAGS = -Wall -O2
 LDFLAGS = 
 
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse)
