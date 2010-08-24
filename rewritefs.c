@@ -221,16 +221,11 @@ static int rewrite_rmdir(const char *path) {
 
 static int rewrite_symlink(const char *from, const char *to) {
     int res;
-    char *new_from, *new_to;
-    if ((new_from = rewrite(from)) == NULL)
+    char *new_to;
+    if ((new_to = rewrite(to)) == NULL)
         return -ENOMEM;
-    if ((new_to = rewrite(to)) == NULL) {
-        free(new_from);
-        return -ENOMEM;
-    }
 
-    res = symlink(new_from, new_to);
-    free(new_from);
+    res = symlink(from, new_to);
     free(new_to);
     if (res == -1)
         return -errno;
