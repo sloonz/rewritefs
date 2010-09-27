@@ -333,7 +333,7 @@ static int options_proc(void *data, const char *arg, int key, struct fuse_args *
                 outargs->argv[0]);
         fuse_opt_add_arg(outargs, "-ho");
         fuse_main(outargs->argc, outargs->argv, NULL, NULL);
-        abort();
+        exit(0);
 
     case KEY_VERSION:
         fuse_opt_add_arg(outargs, "--version");
