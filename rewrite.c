@@ -348,6 +348,8 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
     
     memset(&config, 0, sizeof(config));
     fuse_opt_parse(outargs, &config, options, options_proc);
+    fuse_opt_add_arg(outargs, "-o");
+    fuse_opt_add_arg(outargs, "use_ino,default_permissions");
     if(config.orig_fs == NULL) {
         fprintf(stderr, "missing source argument\n");
         abort();
