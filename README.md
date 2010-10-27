@@ -6,9 +6,9 @@ rewritefs(1) -- mod_rewrite-like FUSE filesystem
 **rewritefs** is a FUSE filesystem similar to web servers mod_rewrite. It can
 change the name of accessed files on-the-fly.
 
-The short story: I needed a tool to managed my dotfiles. I forked Luc Dufrene's
-libetc [http://ordiluc.net/fs/libetc/] (mainly for small fixes), which can be
-described like this:
+The short story: I needed a tool to manage my dotfiles. I forked Luc Dufrene's
+libetc [http://ordiluc.net/fs/libetc/] after it seemed unmaintained. Here is its
+description:
 
 >On my system I had way too much dotfiles:
 >
@@ -26,11 +26,11 @@ described like this:
 
 Unfortunately, I eventually run into LD\_PRELOAD problems (mainly with programs
 using dlopen like VirtualBox and screen). So I decided to rewrite it using
-FUSE, and to make it more generic.
+FUSE, and make it more generic.
 
 ## Invocation
 
-You write your configuration file (see below), and then you mount the "mirror"
+You write your configuration file (see below), and then you mount the "rewritten"
 filesystem, for example :
 
     rewritefs -o config=/mnt/home/me/.config/rewritefs /mnt/home/me /home/me
@@ -39,6 +39,8 @@ Then, accessing to files in /home/me will follow rules defined in your config
 file.
 
 ## Configuration
+
+### Regular expressions
 
 The Regexp syntax is similar to Perl. Recognized flags are : **i**, **x**, **u**.
 Example of valid regexps are:
@@ -55,10 +57,6 @@ Note that m{foo} is not recognized ; you must use m{foo{
 
 **i** and **x** has the same meaning than in Perl. **u** means "use utf-8" (both for
 pattern and input string).
-
-
-
-The syntax is pretty simple, and has three types of elements:
 
 ### Command line match
  
@@ -92,7 +90,7 @@ conjunction with the **x** flag.
  
 ### Comment
   
-A line starting with "##"
+A line starting with "#"
 
 ## Installation
 
@@ -126,20 +124,20 @@ you can write the more efficient:
 I urge you to read "Mastering regular expressions" if you want to make
 rules substantially different from the example.
 
-## Usage with mount(8) or fstab(5)
+## Using rewritefs with mount(8) or fstab(5)
 
-    mount.fuse rewritefs##/mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other,default_permissions
+    mount.fuse rewritefs#/mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other
  
 allow\_other and default\_permissions is here to allow standards users to access
 the filesystem with standard permissions.
  
 So, you can use the fstab entry:
  
-    rewritefs##/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other,default_permissions 0 0
+    rewritefs#/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other 0 0
  
 See rewritefs --help for all FUSE options.
 
-## Usage with pam_mount(8)
+## Using rewritefs with pam_mount(8)
 
 Let's suppose that you want to use rewritefs to replace libetc (it's its
 primary goal, after all). You need to mount the rewritefs on your home when 
@@ -150,7 +148,7 @@ rewritefs on /home/$USER with configuration file stored at
 /mnt/home/$USER/.config/rewritefs, you need to add this to pam_mount.xml:
  
     <volume fstype="fuse" path="rewritefs##/mnt/home/%(USER)" mountpoint="~"
-         options="config=/mnt/home/%(USER)/.config/rewritefs,allow_other,default_permissions" />
+         options="config=/mnt/home/%(USER)/.config/rewritefs,allow_other" />
 
 You can add user="me" to limit this to yourself (but think to create symlinks
 for other users !)
