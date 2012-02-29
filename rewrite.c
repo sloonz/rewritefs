@@ -190,7 +190,7 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     }
     
     (*regexp)->extra = pcre_study((*regexp)->regexp, 0, &error);
-    if((*regexp)->extra == NULL) {
+    if((*regexp)->extra == NULL && error != NULL) {
         fprintf(stderr, "Can't compile regular expression: %s\n. Regular expression was :\n  %s\n", error, regexp_body);
         abort();
     }
