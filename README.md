@@ -178,3 +178,21 @@ rules for busybox:
     /^/ .
     - //
     m#^\.# .config/
+
+## FAQ
+
+Q: I installed rewritefs with the default config, and now `ls` returns me something like that :
+
+    ls: cannot access /home/user/.vimrc: No such file or directory
+    ls: cannot access /home/user/.zshrc: No such file or directory
+    d????????? ? ? ? ? ? .ssh/
+
+A: If `x` is translated (by the rules you give to rewritefs) into `y` but, and that you didn’t
+renamed `x` into `y` yourself (i.e. that `x` still exists and `y` doesn’t exists), that’s the
+intended behavior.
+
+You just have to move `.vimrc` to `.config/vimrc`, `.ssh` to `.config/ssh`, and so on.
+
+Rewritefs does not rewrite `readdir()` (it’s not possible to find `y` from `x`, since the rules
+are defined using regular expressions), so `x` is listed. Then `ls` tries `stat(x)`, which is
+translated into `stat(y)`, which gives this error since `y` does not exists.
