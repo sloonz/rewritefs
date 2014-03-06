@@ -28,17 +28,111 @@ Unfortunately, I eventually run into LD\_PRELOAD problems (mainly with programs
 using dlopen like VirtualBox and screen). So I decided to rewrite it using
 FUSE, and make it more generic.
 
-## Invocation
+## Dependencies
 
-You write your configuration file (see below), and then you mount the "rewritten"
-filesystem, for example :
+fuse & pcre. That's all.
+
+To use contexts, you need /proc/(pid)/cmdline. But don't use contexts if you
+can avoid it !
+
+## Installation
+
+    make && sudo make install
+
+## Configuration
+
+For a complete description of the configuration syntax format, see below.
+
+Make sure that `user_allow_other` is enabled in `/etc/fuse.conf`.
+
+### Example 1
+
+This simple example show how to achieve the same effect than libetc:
+
+    m#^(?!\.)# .
+    m#^\.(cache|config|local)# .
+    m#^\.# .config/
+
+
+### Example 2
+
+This example show how to use contexts ; it is like the former, but ignore the rewrite
+rules for busybox:
+
+    m#^(?!\.)# .
+    m#^\.(cache|config|local)# .
+    - /^\S*busybox/
+    /^/ .
+    - //
+    m#^\.# .config/
+
+## Usage
+
+Once you have written your configuration file, you use `rewritefs`
+to mount the "rewritten" filesystem, for example :
 
     rewritefs -o config=/mnt/home/me/.config/rewritefs /mnt/home/me /home/me
  
 Then, accessing to files in /home/me will follow rules defined in your config
 file.
 
-## Configuration
+## Using rewritefs with mount(8) or fstab(5)
+
+    mount.fuse rewritefs#/mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other
+ 
+allow\_other and default\_permissions is here to allow standards users to access
+the filesystem with standard permissions.
+ 
+So, you can use the fstab entry:
+ 
+    rewritefs#/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other 0 0
+ 
+See rewritefs --help for all FUSE options.
+
+## Using rewritefs with pam_mount(8)
+
+Let's suppose that you want to use rewritefs to replace libetc (it's its
+primary goal, after all). You need to mount the rewritefs on your home when 
+you login. This can be achieved with pam_mount.
+ 
+Let's say you have your raw home dirs in /mnt/home/$USER. Then, to use
+rewritefs on /home/$USER with configuration file stored at
+/mnt/home/$USER/.config/rewritefs, you need to add this to pam_mount.xml:
+ 
+    <volume fstype="fuse" path="rewritefs##/mnt/home/%(USER)" mountpoint="~"
+         options="config=/mnt/home/%(USER)/.config/rewritefs,allow_other" />
+
+You can add user="me" to limit this to yourself (but think to create symlinks
+for other users !)
+ 
+Don't forget to activate pam_mount in your pam configuration too. This is
+distribution-dependent ; you have to refer to the corresponding documentation.
+
+## FAQ
+
+**Q:** I installed rewritefs with the default config, and now `ls` returns me something like that :
+
+    ls: cannot access /home/user/.vimrc: No such file or directory
+    ls: cannot access /home/user/.zshrc: No such file or directory
+    d????????? ? ? ? ? ? .ssh/
+
+**Short answer:** You have to manually move `.vimrc`, `zshrc`, `.ssh/` inside
+`.config` before using `rewritefs`.
+
+**Long answer:** If `.ssh` is translated (by the rules you gave to
+rewritefs) into `.config/ssh`, and that you didn’t renamed `.ssh` into
+`.config/ssh` yourself (i.e. that `.ssh` still exists and `.config/ssh`
+doesn’t exists on the original filesystem), that’s the intended
+behavior.
+
+Rewritefs does not rewrite `readdir()`, since it would need "backwards"
+rewriting (and that’s not technically possible, since the rules
+are defined using regular expressions). `ls` calls `readdir()`,
+which returns `.ssh`. `ls` then tries to call `stat(".ssh")` to find
+metadata (permissions, mtime and so on), which is rewritten into
+`stat(".config/ssh")` which does not exists, hence this error.
+
+## Configuration syntax format
 
 ### Regular expressions
 
@@ -92,18 +186,7 @@ conjunction with the **x** flag.
   
 A line starting with "#"
 
-## Installation
-
-    make && sudo make install
-
-## Dependencies
-
-fuse & pcre. That's all.
-
-To use contexts, you need /proc/(pid)/cmdline. But don't use contexts if you
-can avoid it !
-
-## Performances
+### Performances
  
 Some rules to keep the overhead smallest possible :
 
@@ -123,76 +206,3 @@ you can write the more efficient:
 
 I urge you to read "Mastering regular expressions" if you want to make
 rules substantially different from the example.
-
-## Using rewritefs with mount(8) or fstab(5)
-
-    mount.fuse rewritefs#/mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other
- 
-allow\_other and default\_permissions is here to allow standards users to access
-the filesystem with standard permissions.
- 
-So, you can use the fstab entry:
- 
-    rewritefs#/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other 0 0
- 
-See rewritefs --help for all FUSE options.
-
-## Using rewritefs with pam_mount(8)
-
-Let's suppose that you want to use rewritefs to replace libetc (it's its
-primary goal, after all). You need to mount the rewritefs on your home when 
-you login. This can be achieved with pam_mount.
- 
-Let's say you have your raw home dirs in /mnt/home/$USER. Then, to use
-rewritefs on /home/$USER with configuration file stored at
-/mnt/home/$USER/.config/rewritefs, you need to add this to pam_mount.xml:
- 
-    <volume fstype="fuse" path="rewritefs##/mnt/home/%(USER)" mountpoint="~"
-         options="config=/mnt/home/%(USER)/.config/rewritefs,allow_other" />
-
-You can add user="me" to limit this to yourself (but think to create symlinks
-for other users !)
- 
-Don't forget to activate pam_mount in your pam configuration too. This is
-distribution-dependent ; you have to refer to the corresponding documentation.
-
-## Examples
-
-### Example 1
-
-This simple example show how to achieve the same effect than libetc:
-
-    m#^(?!\.)# .
-    m#^\.(cache|config|local)# .
-    m#^\.# .config/
-
-
-### Example 2
-
-This example show how to use contexts ; it is like the former, but ignore the rewrite
-rules for busybox:
-
-    m#^(?!\.)# .
-    m#^\.(cache|config|local)# .
-    - /^\S*busybox/
-    /^/ .
-    - //
-    m#^\.# .config/
-
-## FAQ
-
-Q: I installed rewritefs with the default config, and now `ls` returns me something like that :
-
-    ls: cannot access /home/user/.vimrc: No such file or directory
-    ls: cannot access /home/user/.zshrc: No such file or directory
-    d????????? ? ? ? ? ? .ssh/
-
-A: If `x` is translated (by the rules you give to rewritefs) into `y` but, and that you didn’t
-renamed `x` into `y` yourself (i.e. that `x` still exists and `y` doesn’t exists), that’s the
-intended behavior.
-
-You just have to move `.vimrc` to `.config/vimrc`, `.ssh` to `.config/ssh`, and so on.
-
-Rewritefs does not rewrite `readdir()` (it’s not possible to find `y` from `x`, since the rules
-are defined using regular expressions), so `x` is listed. Then `ls` tries `stat(x)`, which is
-translated into `stat(y)`, which gives this error since `y` does not exists.
