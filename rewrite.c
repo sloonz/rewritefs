@@ -412,7 +412,6 @@ char *get_caller_cmdline() {
 
 char *apply_rule(const char *path, struct rewrite_rule *rule) {
     int *ovector, nvec;
-    int res;
     char *rewritten;
     
     if(rule == NULL || rule->rewritten_path == NULL) {
@@ -426,7 +425,7 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     /* Fill ovector */
     nvec = (rule->filename_regexp->captures + 1) * 3;
     ovector = calloc(nvec, sizeof(int));
-    res = pcre_exec(rule->filename_regexp->regexp, rule->filename_regexp->extra, path+1,
+    pcre_exec(rule->filename_regexp->regexp, rule->filename_regexp->extra, path+1,
         strlen(path)-1, 0, 0, ovector, nvec);
     
     /* rewritten = orig_fs + part of path before the matched part + rewritten_path + part of path after the matched path */
