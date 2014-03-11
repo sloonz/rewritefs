@@ -318,7 +318,7 @@ static int options_proc(void *data, const char *arg, int key, struct fuse_args *
 
     case KEY_HELP:
         fprintf(stderr,
-                "usage: %s soruce mountpoint [options]\n"
+                "usage: %s source mountpoint [options]\n"
                 "\n"
                 "general options:\n"
                 "    -o opt,[opt...]  mount options\n"
