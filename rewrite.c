@@ -108,7 +108,7 @@ static void parse_string(FILE *fd, char **string, char sep) {
         c = getc(fd);
         if(c == EOF) {
             fprintf(stderr, "Unexpected EOF\n");
-            abort();
+            exit(1);
         }
         
         if(c == '\\') {
@@ -143,13 +143,13 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
             sep = getc(fd);
         } else if(sep != '/') {
             fprintf(stderr, "Unexpected character \"%c\"\n", (char)sep);
-            abort();
+            exit(1);
         }
     }
     
     if(sep == EOF) {
         fprintf(stderr, "Unexpected EOF\n");
-        abort();
+        exit(1);
     }
     
     /* Get body */
@@ -169,10 +169,10 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
             break;
         case EOF:
             fprintf(stderr, "Unexpected EOF\n");
-            abort();
+            exit(1);
         default:
             fprintf(stderr, "Unknown flag %c\n", (char)c);
-            abort();
+            exit(1);
         }
     }
     
@@ -186,13 +186,13 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     (*regexp)->regexp = pcre_compile(regexp_body, regexp_flags, &error, &offset, NULL);
     if((*regexp)->regexp == NULL) {
         fprintf(stderr, "Invalid regular expression: %s\n. Regular expression was :\n  %s\n", error, regexp_body);
-        abort();
+        exit(1);
     }
     
     (*regexp)->extra = pcre_study((*regexp)->regexp, 0, &error);
     if((*regexp)->extra == NULL && error != NULL) {
         fprintf(stderr, "Can't compile regular expression: %s\n. Regular expression was :\n  %s\n", error, regexp_body);
-        abort();
+        exit(1);
     }
     
     pcre_fullinfo((*regexp)->regexp, (*regexp)->extra, PCRE_INFO_CAPTURECOUNT, &(*regexp)->captures);
@@ -228,7 +228,7 @@ static void parse_item(FILE *fd, enum type *type, struct regexp **regexp, char *
         return;
     default:
         fprintf(stderr, "Unexpected character \"%c\"\n", (char)c);
-        abort();
+        exit(1);
     }
 }
 
@@ -352,7 +352,7 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
     fuse_opt_add_arg(outargs, "use_ino,default_permissions");
     if(config.orig_fs == NULL) {
         fprintf(stderr, "missing source argument\n");
-        abort();
+        exit(1);
     } else {
         config.orig_fs = canonicalize_file_name(config.orig_fs);
         if(config.orig_fs[strlen(config.orig_fs)-1] == '/')
@@ -362,7 +362,7 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
         fd = fopen(config.config_file, "r");
         if(fd == NULL) {
             perror("opening config file");
-            abort();
+            exit(1);
         }
         parse_config(fd);
         fclose(fd);
