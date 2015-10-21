@@ -41,6 +41,7 @@ struct rewrite_context {
 struct config {
     char *config_file;
     char *orig_fs;
+    char *mount_point;
     struct rewrite_context *contexts;
     int verbose;
 };
@@ -313,6 +314,12 @@ static int options_proc(void *data, const char *arg, int key, struct fuse_args *
         if(config.orig_fs == NULL) {
             config.orig_fs = strdup(arg);
             return 0;
+        } else if(config.mount_point == NULL) {
+            config.mount_point = strdup(arg);
+            return 1;
+        } else {
+            fprintf(stderr, "Invalid argument: %s\n", arg);
+            exit(1);
         }
         break;
 
@@ -350,6 +357,7 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
     fuse_opt_parse(outargs, &config, options, options_proc);
     fuse_opt_add_arg(outargs, "-o");
     fuse_opt_add_arg(outargs, "use_ino,default_permissions");
+
     if(config.orig_fs == NULL) {
         fprintf(stderr, "missing source argument\n");
         exit(1);
@@ -358,7 +366,18 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
         if(config.orig_fs[strlen(config.orig_fs)-1] == '/')
             config.orig_fs[strlen(config.orig_fs)-1] = 0;
     }
+
+    if(config.mount_point == NULL) {
+        fprintf(stderr, "missing mount point argument\n");
+        exit(1);
+    }
+   
     if(config.config_file) {
+        if(strncmp(config.config_file, config.mount_point, strlen(config.mount_point)) == 0) {
+            fprintf(stderr, "configuration file %s must not be located inside the mount point (%s)\n", config.config_file, config.mount_point);
+            exit(1);
+        }
+
         fd = fopen(config.config_file, "r");
         if(fd == NULL) {
             perror("opening config file");
