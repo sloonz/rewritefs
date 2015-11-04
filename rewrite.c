@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <ctype.h>
 #include <string.h>
+#include <errno.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
@@ -363,6 +364,10 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
         exit(1);
     } else {
         config.orig_fs = canonicalize_file_name(config.orig_fs);
+        if(config.orig_fs == NULL) {
+            fprintf(stderr, "Cannot open source directory: %s\n", strerror(errno));
+            exit(1);
+        }
         if(config.orig_fs[strlen(config.orig_fs)-1] == '/')
             config.orig_fs[strlen(config.orig_fs)-1] = 0;
     }
