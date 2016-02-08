@@ -24,5 +24,5 @@ clean:
 install: rewritefs
 	install -d $(DESTDIR)$(BINDIR)
 	install -d $(DESTDIR)$(MANDIR)/man1
-	install --mode=755 rewritefs $(DESTDIR)$(BINDIR)
+	install --mode=6755 rewritefs $(DESTDIR)$(BINDIR)
 	install --mode=644 rewritefs.1 $(DESTDIR)$(MANDIR)/man1
