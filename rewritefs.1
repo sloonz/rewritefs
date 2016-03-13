@@ -1,7 +1,7 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "REWRITEFS" "1" "March 2014" "" ""
+.TH "REWRITEFS" "1" "March 2016" "" ""
 .
 .SH "NAME"
 \fBrewritefs\fR \- mod_rewrite\-like FUSE filesystem
@@ -110,6 +110,19 @@ rewritefs#/mnt/home/me /home/me fuse config=/mnt/home/me/\.config/rewritefs,allo
 .
 .P
 See rewritefs \-\-help for all FUSE options\.
+.
+.P
+Alternatively, you can directly use \fBrewritefs\fR as a file system type:
+.
+.IP "" 4
+.
+.nf
+
+/mnt/home/me /home/me rewritefs config=/mnt/home/me/\.config/rewritefs,allow_other 0 0
+.
+.fi
+.
+.IP "" 0
 .
 .SH "Using rewritefs with pam_mount(8)"
 Let\'s suppose that you want to use rewritefs to replace libetc (it\'s its primary goal, after all)\. You need to mount the rewritefs on your home when you login\. This can be achieved with pam_mount\.

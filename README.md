@@ -89,6 +89,10 @@ So, you can use the fstab entry:
  
 See rewritefs --help for all FUSE options.
 
+Alternatively, you can directly use `rewritefs` as a file system type:
+
+    /mnt/home/me /home/me rewritefs config=/mnt/home/me/.config/rewritefs,allow_other 0 0
+
 ## Using rewritefs with pam_mount(8)
 
 Let's suppose that you want to use rewritefs to replace libetc (it's its
