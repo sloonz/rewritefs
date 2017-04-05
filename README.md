@@ -78,6 +78,21 @@ to mount the "rewritten" filesystem, for example :
 Then, accessing to files in /home/me will follow rules defined in your config
 file.
 
+### Directory auto-creation
+
+When using backreferences of in rules of the form…
+
+    /(.+) - (.+)/ \1/\2
+
+…it is possible that the directory into which an operation is being redirected
+does not exist yet. To support such rules, rewritefs may be invoked with the
+option `-o autocreate`. This option will cause rewritefs to automatically create
+all non-existing parent directories when a path is being rewritten.
+
+Note that, due to FUSE limitations, the parent directories will be created using
+the umask with which rewritefs has been invoked, instead of the umask of the
+process requesting accessing the file.
+
 ## Using rewritefs with mount(8) or fstab(5)
 
     rewritefs /mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other

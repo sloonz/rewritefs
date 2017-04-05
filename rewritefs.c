@@ -22,30 +22,13 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/time.h>
-#include <pthread.h>
 #ifdef HAVE_SETXATTR
 #include <sys/xattr.h>
 #endif
 
 #include "rewrite.h"
 
-/* Lock for process EUID/EGID/umask */
-static pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
-#define RLOCK(expr) { \
-    pthread_rwlock_rdlock(&rwlock);\
-    expr; \
-    pthread_rwlock_unlock(&rwlock); \
-}
-
-#define WLOCK(expr) { \
-    pthread_rwlock_wrlock(&rwlock); \
-    uid_t _euid = geteuid(); gid_t _egid = getegid(); mode_t _umask = umask(fuse_get_context()->umask); \
-    seteuid(fuse_get_context()->uid); setegid(fuse_get_context()->gid); \
-    expr; \
-    seteuid(_euid); setegid(_egid); umask(_umask); \
-    pthread_rwlock_unlock(&rwlock); \
-}
+pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 static void *rewrite_init(struct fuse_conn_info *conn,
                           struct fuse_config *cfg) {

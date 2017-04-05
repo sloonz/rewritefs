@@ -8,6 +8,10 @@
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
+#include <libgen.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
@@ -46,6 +50,7 @@ struct config {
     char *mount_point;
     struct rewrite_context *contexts;
     int verbose;
+    int autocreate;
 };
 
 enum type {
@@ -305,6 +310,7 @@ enum {
 static struct fuse_opt options[] = {
     REWRITE_OPT("config=%s",       config_file, 0),
     REWRITE_OPT("verbose=%i",      verbose, 0),
+    REWRITE_OPT("autocreate",      autocreate, 1),
 
     FUSE_OPT_KEY("-V",             KEY_VERSION),
     FUSE_OPT_KEY("--version",      KEY_VERSION),
@@ -430,6 +436,35 @@ char *get_caller_cmdline() {
     return ret;
 }
 
+/* Recursively create all parent directories in `path`. */
+static int mkdir_parents(const char *path, mode_t mode) {
+    int result = 0;
+
+    /* dirname() could clobber its argument. */
+    char *path_ = strdup(path);
+
+    /* dirname() may statically allocate the result; we need to copy so we don’t */
+    char *dir = strdup(dirname(path_));
+
+    struct stat dirstat;
+    errno = 0;
+    if ((fstatat(config.orig_fd, dir, &dirstat, 0) == -1) && errno == ENOENT) {
+        if (mkdir_parents(dir, mode)) {
+            result = -1;
+            goto done;
+        }
+
+        WLOCK(result = mkdirat(config.orig_fd, dir, mode));
+        if (result == -1)
+            goto done;
+    }
+
+done:
+    free(dir);
+    free(path_);
+    return result;
+}
+
 char *apply_rule(const char *path, struct rewrite_rule *rule) {
     int *ovector, nvec;
     char *rewritten, *rewritten_path, *rewritten_path_buf = NULL;
@@ -508,6 +543,12 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
 
     free(rewritten_path_buf);
     free(ovector);
+
+    if(config.autocreate) {
+        if(mkdir_parents(rewritten, (S_IRWXU | S_IRWXG | S_IRWXO)) == -1)
+            fprintf(stderr, "Warning: %s -> %s: autocreating parents failed: %s\n",
+                    path, rewritten, strerror(errno));
+    }
 
     DEBUG(1, "  %s -> %s\n", path, rewritten);
     DEBUG(3, "\n");
