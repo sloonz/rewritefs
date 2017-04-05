@@ -24,7 +24,7 @@ teardown() {
 }
 
 mount_rewritefs() {
-    "$BATS_TEST_DIRNAME/../rewritefs" -o "config=$CFGFILE" "$BATS_TEST_DIRNAME/source" "$TESTDIR"
+    "$BATS_TEST_DIRNAME/../rewritefs" -o "config=$CFGFILE,$1" "$BATS_TEST_DIRNAME/source" "$TESTDIR"
 }
 
 @test "Test simple rules" {
@@ -217,4 +217,22 @@ EOF
     run cat "$TESTDIR/test2"
     [ "$status" = 0 ]
     [ "$output" = "egg" ]
+}
+
+@test "Test autocreate option" {
+    cat > "$CFGFILE" << EOF
+m:^tmp/(.+)-(.+)-(.+)-(.+): tmp/\\1/\\2/\\3/\\4
+EOF
+
+    mount_rewritefs autocreate
+
+    echo hello > "$TESTDIR/tmp/a-b-c-d"
+    [ -d "$TESTDIR/tmp/a" ]
+    [ -d "$TESTDIR/tmp/a/b" ]
+    [ -d "$TESTDIR/tmp/a/b/c" ]
+    [ -f "$TESTDIR/tmp/a/b/c/d" ]
+
+    run cat "$TESTDIR/tmp/a/b/c/d"
+    [ "$status" = 0 ]
+    [ "$output" = "hello" ]
 }
