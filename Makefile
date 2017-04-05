@@ -1,8 +1,7 @@
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man
-CFLAGS = -Wall -O2
-LDFLAGS = 
+CFLAGS += -Wall -O2
 
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse)
 FUSE_LIBS = $(shell pkg-config --libs fuse)
