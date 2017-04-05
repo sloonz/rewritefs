@@ -9,6 +9,8 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <libgen.h>
+#include <unistd.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
@@ -47,6 +49,7 @@ struct config {
     char *mount_point;
     struct rewrite_context *contexts;
     int verbose;
+    int autocreate;
 };
 
 enum type {
@@ -303,6 +306,7 @@ static struct fuse_opt options[] = {
     REWRITE_OPT("config=%s",       config_file, 0),
     REWRITE_OPT("-v %i",           verbose, 0),
     REWRITE_OPT("verbose=%i",      verbose, 0),
+    REWRITE_OPT("autocreate",      autocreate, 1),
 
     FUSE_OPT_KEY("-V",             KEY_VERSION),
     FUSE_OPT_KEY("--version",      KEY_VERSION),
@@ -500,6 +504,25 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
 
     free(rewritten_path);
     free(ovector);
+
+    if(config.autocreate) {
+       uid_t _euid = geteuid();
+       gid_t _egid = getegid();
+       if(seteuid(fuse_get_context()->uid) == -1)
+         perror("Warning: could not set EUID");
+       if(setegid(fuse_get_context()->gid) == -1)
+         perror("Warning: could not set EGID");
+       // We’re not setting umask since FUSE always returns 0 as a umask during
+       // non-write operations, which isn’t what we want. So the best we can do
+       // is use our own umask.
+       if(mkdir_parents(rewritten, (S_IRWXU | S_IRWXG | S_IRWXO)) == -1)
+         fprintf(stderr, "Warning: %s -> %s: autocreating parents failed\n",
+                 path, rewritten);
+       if(seteuid(_euid) == -1)
+         perror("Warning: could not restore EUID");
+       if(setegid(_egid) == -1)
+         perror("Warning: could not restore EGID");
+    }
 
     DEBUG(1, "  %s -> %s\n", path, rewritten);
     DEBUG(3, "\n");

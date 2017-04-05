@@ -1,8 +1,11 @@
 #include <assert.h>
 #include <errno.h>
+#include <errno.h>
+#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -41,4 +44,39 @@ char *string_replace(const char *source, const char *from, const char *to) {
 
   free(before);
   return dest;
+}
+
+/* Recursively create all parent directories in `path`. */
+int mkdir_parents(const char *path, mode_t mode) {
+  int result = 0;
+
+  // dirname() could clobber its argument.
+  char *tmp = malloc(strlen(path) + 1);
+  strcpy(tmp, path);
+  char *path_ = tmp;
+
+  // dirname() may statically allocate the result; we need to copy so we don’t
+  // lose the result during recursion.
+  tmp = dirname(path_);
+  char *dir = malloc(strlen(tmp) + 1);
+  strcpy(dir, tmp);
+
+  struct stat dirstat;
+  errno = 0;
+  if ((stat(dir, &dirstat) == -1) && errno == ENOENT) {
+    if (mkdir_parents(dir, mode)) {
+      result = -1;
+      goto done;
+    }
+
+    if (mkdir(path_, mode)) {
+      result = -1;
+      goto done;
+    }
+  }
+
+done:
+  free(dir);
+  free(path_);
+  return result;
 }
