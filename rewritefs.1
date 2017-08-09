@@ -1,7 +1,7 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "REWRITEFS" "1" "March 2016" "" ""
+.TH "REWRITEFS" "1" "April 2017" "" ""
 .
 .SH "NAME"
 \fBrewritefs\fR \- mod_rewrite\-like FUSE filesystem
@@ -83,6 +83,25 @@ rewritefs \-o config=/mnt/home/me/\.config/rewritefs /mnt/home/me /home/me
 .
 .P
 Then, accessing to files in /home/me will follow rules defined in your config file\.
+.
+.SS "Directory auto\-creation"
+When using backreferences of in rules of the form…
+.
+.IP "" 4
+.
+.nf
+
+/(\.+) \- (\.+)/ \e1/\e2
+.
+.fi
+.
+.IP "" 0
+.
+.P
+…it is possible that the directory into which an operation is being redirected does not exist yet\. To support such rules, rewritefs may be invoked with the option \fB\-o autocreate\fR\. This option will cause rewritefs to automatically create all non\-existing parent directories when a path is being rewritten\.
+.
+.P
+Note that, due to FUSE limitations, the parent directories will be created using the umask with which rewritefs has been invoked, instead of the umask of the process requesting accessing the file\.
 .
 .SH "Using rewritefs with mount(8) or fstab(5)"
 .
@@ -230,7 +249,7 @@ If rewritten\-path is \fB\.\fR, it means "don\'t rewrite anything"\.
 \&\. and \.\. will never be proposed to be translated\.
 .
 .P
-You can access to matched parenthesis with \e1, \e2\.\.\. (not yet implemented)
+You can access captured groups as backreferences (\fB\e1\fR, \fB\e2\fR, …)\.
 .
 .P
 A regular expression can be written in more than one line, in particular in conjunction with the \fBx\fR flag\.

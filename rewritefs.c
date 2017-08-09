@@ -585,8 +585,6 @@ static struct fuse_operations rewrite_oper = {
 
 int main(int argc, char *argv[]) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-
-    umask(0);
     parse_args(argc, argv, &args);
     return fuse_main(args.argc, args.argv, &rewrite_oper, NULL);
 }
