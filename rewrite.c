@@ -112,21 +112,26 @@ static void parse_string(FILE *fd, char **string, char sep) {
             fprintf(stderr, "Unexpected EOF\n");
             exit(1);
         }
-        
-        if(c == '\\') {
-            escaped ^= 1;
-        } else {
+
+        if(escaped) {
+            /* \\ -> \
+             * \(sep) -> (sep)
+             * \(other) -> \(other)
+             */
             escaped = 0;
-        }
-        
-        if(c == (int)sep) {
-            if(escaped) /* remove previous \ from the string and add the character to it */
-                string_size--;
-            else
+            if(c != '\\' && c != (int)sep) {
+                string_append(string, '\\', &string_cap, &string_size);
+            }
+            string_append(string, c, &string_cap, &string_size);
+        } else {
+            if(c == '\\') {
+                escaped = 1;
+            } else if(c == (int)sep) {
                 break;
+            } else {
+                string_append(string, c, &string_cap, &string_size);
+            }
         }
-        
-        string_append(string, c, &string_cap, &string_size);
     }
 }
 

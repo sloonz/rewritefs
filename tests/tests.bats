@@ -54,8 +54,6 @@ EOF
 }
 
 @test "Test escape" {
-		skip "Have to fix this..."
-
 		cat > "$CFGFILE" << EOF
 # double \ because bash will do a first escape. It will be a single \ in the configuration file.
 # Escaping char in tests sucks.
@@ -103,15 +101,13 @@ EOF
 }
 
 @test "Test backreference" {
-		skip "Have to fix this..."
-
 		cat > "$CFGFILE" << EOF
-m:^f(o)\\1: foo
+m:^f([0-9])\\1: foo
 EOF
 
 		mount_rewritefs
 
-		run cat "$TESTDIR/fo/bar"
+		run cat "$TESTDIR/f11/bar"
 		[ "$status" = 0 ]
 		[ "$output" = "bar" ]
 }

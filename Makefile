@@ -28,5 +28,5 @@ install: rewritefs
 	install --mode=644 rewritefs.1 $(DESTDIR)$(MANDIR)/man1
 	ln -s rewritefs $(DESTDIR)$(BINDIR)/mount.rewritefs
 
-test:
+test: all
 	(cd tests ; bats tests.bats)
