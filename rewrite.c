@@ -8,12 +8,14 @@
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
 #include <pcre.h>
 
 #include "rewrite.h"
+#include "util.h"
 
 #define DEBUG(lvl, x...) if(config.verbose >= lvl) fprintf(stderr, x)
 
@@ -454,24 +456,56 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     /* Fill ovector */
     nvec = (rule->filename_regexp->captures + 1) * 3;
     ovector = calloc(nvec, sizeof(int));
-    pcre_exec(rule->filename_regexp->regexp, rule->filename_regexp->extra, path+1,
-        strlen(path)-1, 0, 0, ovector, nvec);
-    
-    /* rewritten = orig_fs + part of path before the matched part + rewritten_path + part of path after the matched path */
-    rewritten = malloc(strlen(config.orig_fs) + strlen(rule->rewritten_path) + 1 /* \0 */ + 
-        1 + ovector[0] + /* before */
-        strlen(path) - ovector[1] /* after */);
+    int scount = pcre_exec(rule->filename_regexp->regexp,
+                           rule->filename_regexp->extra, path+1,
+                           strlen(path)-1, 0, 0, ovector, nvec);
+
+    /* Replace backreferences */
+    char *rewritten_path = malloc(strlen(rule->rewritten_path) + 1);
+    strcpy(rewritten_path, rule->rewritten_path);
+    for (int i=1; i<=rule->filename_regexp->captures; i++) {
+      // Since we are replacing rewritten_path with a newly allocated string, we
+      // are keeping a reference around so we can free() it later.
+      char *rewritten_path_free_later = rewritten_path;
+
+      const char *substr;
+      int substr_len = pcre_get_substring(path+1, ovector, scount, i, &substr);
+      assert(substr_len >= 0);
+
+      // Construct the backreference expression (we currently have int, but we
+      // want a string of the form "\1").
+      const int replace_from_len = snprintf(NULL, 0, "\\%d", i);
+      char *replacement_from = malloc(replace_from_len + 1);
+      const int written = snprintf(replacement_from, replace_from_len+1, "\\%d", i);
+      assert(written == replace_from_len);
+
+      rewritten_path = string_replace(rewritten_path, replacement_from, substr);
+      assert(rewritten_path);
+
+      free(replacement_from);
+      free(rewritten_path_free_later);
+      pcre_free_substring(substr);
+    }
+
     DEBUG(4, "  orig_fs = %s\n",  config.orig_fs);
     DEBUG(4, "  begin = %s\n", strndup(path, ovector[0] + 1));
     DEBUG(4, "  rewritten = %s\n", rule->rewritten_path);
     DEBUG(4, "  end = %s\n", path + 1 + ovector[1]);
+
+    /* rewritten = orig_fs + part of path before the matched part +
+       rewritten_path + part of path after the matched path */
+    rewritten = malloc(strlen(config.orig_fs) + strlen(rewritten_path)
+                       + 1 /* \0 */
+                       + 1 + ovector[0] /* before */
+                       + strlen(path) - ovector[1] /* after */);
     strcpy(rewritten, config.orig_fs);
     strncat(rewritten, path, 1 + ovector[0]);
-    strcat(rewritten, rule->rewritten_path); /* XXX replace \1 ... \n if needed */
+    strcat(rewritten, rewritten_path);
     strcat(rewritten, path + 1 + ovector[1]);
-    
+
+    free(rewritten_path);
     free(ovector);
-    
+
     DEBUG(1, "  %s -> %s\n", path, rewritten);
     DEBUG(3, "\n");
     return rewritten;

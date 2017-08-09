@@ -1,8 +1,7 @@
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man
-CFLAGS = -Wall -O2
-LDFLAGS = 
+CFLAGS += -Wall -O2
 
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse)
 FUSE_LIBS = $(shell pkg-config --libs fuse)
@@ -12,8 +11,8 @@ PCRE_LIBS = $(shell pkg-config --libs libpcre)
 
 all: rewritefs
 
-rewritefs: rewritefs.o rewrite.o
-	gcc rewritefs.o rewrite.o $(FUSE_LIBS) $(PCRE_LIBS) $(LDFLAGS) -o $@
+rewritefs: rewritefs.o rewrite.o util.o
+	gcc $^ $(FUSE_LIBS) $(PCRE_LIBS) $(LDFLAGS) -o $@
 
 %.o: %.c
 	gcc $(CFLAGS) $(FUSE_CFLAGS) $(PCRE_CFLAGS) -c $< -o $@
