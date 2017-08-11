@@ -129,6 +129,7 @@ EOF
     cat > "$CFGFILE" << EOF
 /^bar-(.+)/ f\\1/bar
 /^(.+)(_)(.+)/ \\3/\\1
+/^F(.)/ f\\1\\1
 EOF
 
     mount_rewritefs
@@ -138,6 +139,10 @@ EOF
     [ "$output" = "bar" ]
 
     run cat "$TESTDIR/bar_foo"
+    [ "$status" = 0 ]
+    [ "$output" = "bar" ]
+
+    run cat "$TESTDIR/Fo/bar"
     [ "$status" = 0 ]
     [ "$output" = "bar" ]
 }
