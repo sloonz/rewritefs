@@ -496,6 +496,8 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
                 rewritten_path[wpos++] = rule->rewritten_path[i];
             }
         }
+
+        rewritten_path[rewritten_size] = '\0';
     } else {
         rewritten_path = rule->rewritten_path;
     }
