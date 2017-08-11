@@ -181,7 +181,7 @@ If rewritten-path is **.**, it means "don't rewrite anything".
   
 . and .. will never be proposed to be translated.
   
-You can access to matched parenthesis with \1, \2... (not yet implemented)
+You can access captured groups as backreferences (`\1`, `\2`, …).
 
 A regular expression can be written in more than one line, in particular in
 conjunction with the **x** flag.

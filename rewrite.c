@@ -441,7 +441,7 @@ char *get_caller_cmdline() {
 
 char *apply_rule(const char *path, struct rewrite_rule *rule) {
     int *ovector, nvec;
-    char *rewritten;
+    char *rewritten, *rewritten_path, *rewritten_path_buf = NULL;
     
     if(rule == NULL || rule->rewritten_path == NULL) {
         rewritten = strcat(strcpy(malloc(strlen(config.orig_fs)+strlen(path)+1), config.orig_fs),
@@ -454,24 +454,71 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     /* Fill ovector */
     nvec = (rule->filename_regexp->captures + 1) * 3;
     ovector = calloc(nvec, sizeof(int));
-    pcre_exec(rule->filename_regexp->regexp, rule->filename_regexp->extra, path+1,
-        strlen(path)-1, 0, 0, ovector, nvec);
-    
-    /* rewritten = orig_fs + part of path before the matched part + rewritten_path + part of path after the matched path */
-    rewritten = malloc(strlen(config.orig_fs) + strlen(rule->rewritten_path) + 1 /* \0 */ + 
-        1 + ovector[0] + /* before */
-        strlen(path) - ovector[1] /* after */);
+    int scount = pcre_exec(rule->filename_regexp->regexp,
+                           rule->filename_regexp->extra, path+1,
+                           strlen(path)-1, 0, 0, ovector, nvec);
+
+    /* Replace backreferences if we have capturing groups */
+    if(scount > 1) {
+        int i, wpos, group;
+        int rewritten_size = strlen(rule->rewritten_path);
+
+        for(i = 0; i < strlen(rule->rewritten_path); i++) {
+            if(rule->rewritten_path[i] == '\\') {
+                i++;
+                group = rule->rewritten_path[i] - '0';
+                if(rule->rewritten_path[i] >= '0' && rule->rewritten_path[i] <= '9' && group >= 1 && group <= scount-1) {
+                    rewritten_size += ovector[group*2+1] - ovector[group*2] - 2;
+                } else if(rule->rewritten_path[i] == '\\') {
+                    rewritten_size--;
+                }
+            }
+        }
+
+        rewritten_path = rewritten_path_buf = malloc(rewritten_size + 1);
+
+        for(i = 0, wpos = 0; i < strlen(rule->rewritten_path); i++) {
+            if(rule->rewritten_path[i] == '\\') {
+                i++;
+                group = rule->rewritten_path[i] - '0';
+                if(rule->rewritten_path[i] >= '0' && rule->rewritten_path[i] <= '9' && group >= 1 && group <= scount-1) {
+                    strncpy(rewritten_path + wpos,
+                            path + ovector[group*2] + 1,
+                            ovector[group*2+1] - ovector[group*2]);
+                    wpos += ovector[group*2+1] - ovector[group*2];
+                } else if(rule->rewritten_path[i] == '\\') {
+                    rewritten_path[wpos++] = '\\';
+                } else {
+                    rewritten_path[wpos++] = '\\';
+                    rewritten_path[wpos++] = rule->rewritten_path[i];
+                }
+            } else {
+                rewritten_path[wpos++] = rule->rewritten_path[i];
+            }
+        }
+    } else {
+        rewritten_path = rule->rewritten_path;
+    }
+
     DEBUG(4, "  orig_fs = %s\n",  config.orig_fs);
     DEBUG(4, "  begin = %s\n", strndup(path, ovector[0] + 1));
     DEBUG(4, "  rewritten = %s\n", rule->rewritten_path);
     DEBUG(4, "  end = %s\n", path + 1 + ovector[1]);
+
+    /* rewritten = orig_fs + part of path before the matched part +
+       rewritten_path + part of path after the matched path */
+    rewritten = malloc(strlen(config.orig_fs) + strlen(rewritten_path)
+                       + 1 /* \0 */
+                       + 1 + ovector[0] /* before */
+                       + strlen(path) - ovector[1] /* after */);
     strcpy(rewritten, config.orig_fs);
     strncat(rewritten, path, 1 + ovector[0]);
-    strcat(rewritten, rule->rewritten_path); /* XXX replace \1 ... \n if needed */
+    strcat(rewritten, rewritten_path);
     strcat(rewritten, path + 1 + ovector[1]);
-    
+
+    free(rewritten_path_buf);
     free(ovector);
-    
+
     DEBUG(1, "  %s -> %s\n", path, rewritten);
     DEBUG(3, "\n");
     return rewritten;

@@ -124,3 +124,20 @@ EOF
     [ "$status" = 0 ]
     [ "$output" = "egg" ]
 }
+
+@test "Test backreferences in replace part" {
+    cat > "$CFGFILE" << EOF
+/^bar-(.+)/ f\\1/bar
+/^(.+)(_)(.+)/ \\3/\\1
+EOF
+
+    mount_rewritefs
+
+    run cat "$TESTDIR/bar-oo"
+    [ "$status" = 0 ]
+    [ "$output" = "bar" ]
+
+    run cat "$TESTDIR/bar_foo"
+    [ "$status" = 0 ]
+    [ "$output" = "bar" ]
+}
