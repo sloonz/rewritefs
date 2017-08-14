@@ -1,7 +1,7 @@
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man
-CFLAGS = -Wall -O2
+CFLAGS = -Wall -O2 -DHAVE_FDATASYNC=1 -DHAVE_SETXATTR=1
 LDFLAGS = 
 
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse)
