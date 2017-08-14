@@ -30,7 +30,7 @@ FUSE, and make it more generic.
 
 ## Dependencies
 
-fuse & pcre. That's all.
+fuse3 & pcre. That's all.
 
 To use contexts, you need /proc/(pid)/cmdline. But don't use contexts if you
 can avoid it !
@@ -80,20 +80,16 @@ file.
 
 ## Using rewritefs with mount(8) or fstab(5)
 
-    mount.fuse rewritefs#/mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other
+    rewritefs /mnt/home/me /home/me -o config=/mnt/home/me/.config/rewritefs,allow_other
  
 allow\_other and default\_permissions is here to allow standards users to access
 the filesystem with standard permissions.
  
 So, you can use the fstab entry:
  
-    rewritefs#/mnt/home/me /home/me fuse config=/mnt/home/me/.config/rewritefs,allow_other 0 0
+    /mnt/home/me /home/me fuse.rewritefs config=/mnt/home/me/.config/rewritefs,allow_other 0 0
  
-See rewritefs --help for all FUSE options.
-
-Alternatively, you can directly use `rewritefs` as a file system type:
-
-    /mnt/home/me /home/me rewritefs config=/mnt/home/me/.config/rewritefs,allow_other 0 0
+See `mount.fuse(8)` for all FUSE options.
 
 ## Using rewritefs with pam_mount(8)
 

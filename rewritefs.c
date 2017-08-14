@@ -1,15 +1,15 @@
 /* rewritefs.c - mod_rewrite-like FUSE filesystem
- * Copyright 2010 Simon Lipp
+ * Copyright 2010-2017 Simon Lipp
  *
  * This program can be distributed under the terms of the GNU GPL.
  * See the file COPYING.
  *
- * Based on Miklos Szeredi's fuserewrite_fh.c:
- * FUSE: Filesystem in Userspace
+ * Based on FUSE's passthrough_fh.c:
  * Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
+ * Copyright (C) 2011       Sebastian Pipping <sebastian@pipping.org>
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 31
 
 #define _GNU_SOURCE
 
@@ -47,27 +47,34 @@ static pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
     pthread_rwlock_unlock(&rwlock); \
 }
 
-static int rewrite_getattr(const char *path, struct stat *stbuf) {
-    int res;
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
+static void *rewrite_init(struct fuse_conn_info *conn,
+                          struct fuse_config *cfg) {
+    (void)conn;
+    cfg->use_ino = 1;
+    cfg->nullpath_ok = 1;
+    cfg->entry_timeout = 0;
+    cfg->attr_timeout = 0;
+    cfg->negative_timeout = 0;
+    cfg->hard_remove = 1;
 
-    RLOCK(res = lstat(new_path, stbuf));
-    free(new_path);
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    return NULL;
 }
 
-static int rewrite_fgetattr(const char *path, struct stat *stbuf,
-        struct fuse_file_info *fi) {
+static int rewrite_getattr(const char *path, struct stat *stbuf,
+                           struct fuse_file_info *fi) {
     int res;
 
-    (void) path;
+    if(fi == NULL) {
+        char *new_path = rewrite(path);
+        if (new_path == NULL)
+            return -ENOMEM;
 
-    RLOCK(res = fstat(fi->fh, stbuf));
+        RLOCK(res = lstat(new_path, stbuf));
+        free(new_path);
+    } else {
+        RLOCK(res = fstat(fi->fh, stbuf));
+    }
+
     if (res == -1)
         return -errno;
 
@@ -141,16 +148,18 @@ static inline struct rewrite_dirp *get_dirp(struct fuse_file_info *fi) {
 }
 
 static int rewrite_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-        off_t offset, struct fuse_file_info *fi) {
+                           off_t offset, struct fuse_file_info *fi,
+                           enum fuse_readdir_flags flags) {
     struct rewrite_dirp *d = get_dirp(fi);
 
     (void) path;
+    (void) flags;
     if (offset != d->offset) {
         RLOCK(seekdir(d->dp, offset));
         d->entry = NULL;
         d->offset = offset;
     }
-    while (1) {
+    for (;;) {
         struct stat st;
         off_t nextoff;
 
@@ -164,7 +173,7 @@ static int rewrite_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         st.st_ino = d->entry->d_ino;
         st.st_mode = d->entry->d_type << 12;
         RLOCK(nextoff = telldir(d->dp));
-        if (filler(buf, d->entry->d_name, &st, nextoff))
+        if (filler(buf, d->entry->d_name, &st, nextoff, 0))
             break;
 
         d->entry = NULL;
@@ -240,8 +249,8 @@ static int rewrite_rmdir(const char *path) {
 
 static int rewrite_symlink(const char *from, const char *to) {
     int res;
-    char *new_to;
-    if ((new_to = rewrite(to)) == NULL)
+    char *new_to = rewrite(to);
+    if (new_to == NULL)
         return -ENOMEM;
 
     WLOCK(res = symlink(from, new_to));
@@ -252,13 +261,18 @@ static int rewrite_symlink(const char *from, const char *to) {
     return 0;
 }
 
-static int rewrite_rename(const char *from, const char *to) {
+static int rewrite_rename(const char *from, const char *to, unsigned int flags) {
     int res;
     char *new_from, *new_to;
-    if ((new_from = rewrite(from)) == NULL)
-        return -ENOMEM;
-    if ((new_to = rewrite(to)) == NULL) {
+
+    if (flags != 0)
+        return -EINVAL;
+
+    new_from = rewrite(from);
+    new_to = rewrite(to);
+    if (new_from == NULL || new_to == NULL) {
         free(new_from);
+        free(new_to);
         return -ENOMEM;
     }
 
@@ -273,10 +287,11 @@ static int rewrite_rename(const char *from, const char *to) {
 
 static int rewrite_link(const char *from, const char *to) {
     int res;
-    char *new_from, *new_to;
-    if ((new_from = rewrite(from)) == NULL)
+    char *new_from = rewrite(from),
+         *new_to = rewrite(to);
+    if (new_from == NULL)
         return -ENOMEM;
-    if ((new_to = rewrite(to)) == NULL) {
+    if (new_to == NULL) {
         free(new_from);
         return -ENOMEM;
     }
@@ -290,93 +305,84 @@ static int rewrite_link(const char *from, const char *to) {
     return 0;
 }
 
-static int rewrite_chmod(const char *path, mode_t mode) {
+static int rewrite_chmod(const char *path, mode_t mode,
+                         struct fuse_file_info *fi) {
     int res;
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
 
-    RLOCK(res = chmod(new_path, mode));
-    free(new_path);
+    if(fi == NULL) {
+        char *new_path = rewrite(path);
+        if (new_path == NULL)
+            return -ENOMEM;
+
+        RLOCK(res = chmod(new_path, mode));
+        free(new_path);
+    } else {
+        RLOCK(res = fchmod(fi->fh, mode));
+    }
+
     if (res == -1)
         return -errno;
 
     return 0;
 }
 
-static int rewrite_chown(const char *path, uid_t uid, gid_t gid) {
+static int rewrite_chown(const char *path, uid_t uid, gid_t gid,
+                         struct fuse_file_info *fi) {
     int res;
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
 
-    RLOCK(res = lchown(new_path, uid, gid));
-    free(new_path);
+    if(fi == NULL) {
+        char *new_path = rewrite(path);
+        if (new_path == NULL)
+            return -ENOMEM;
+
+        RLOCK(res = lchown(new_path, uid, gid));
+        free(new_path);
+    } else {
+        RLOCK(res = fchown(fi->fh, uid, gid));
+    }
+
     if (res == -1)
         return -errno;
 
     return 0;
 }
 
-static int rewrite_truncate(const char *path, off_t size) {
+static int rewrite_truncate(const char *path, off_t size,
+                            struct fuse_file_info *fi) {
     int res;
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
 
-    RLOCK(res = truncate(new_path, size));
-    free(new_path);
+    if(fi == NULL) {
+        char *new_path = rewrite(path);
+        if (new_path == NULL)
+            return -ENOMEM;
+
+        RLOCK(res = truncate(new_path, size));
+        free(new_path);
+    } else {
+        RLOCK(res = ftruncate(fi->fh, size));
+    }
+
     if (res == -1)
         return -errno;
 
     return 0;
 }
 
-static int rewrite_ftruncate(const char *path, off_t size,
-        struct fuse_file_info *fi) {
+static int rewrite_utimens(const char *path, const struct timespec ts[2],
+                           struct fuse_file_info *fi) {
     int res;
-
-    (void) path;
-
-    RLOCK(res = ftruncate(fi->fh, size));
+    if (fi == NULL) {
+        char *new_path = rewrite(path);
+        if (new_path == NULL)
+            return -ENOMEM;
+        RLOCK(res = utimensat(0, new_path, ts, AT_SYMLINK_NOFOLLOW));
+        free(new_path);
+    } else {
+        RLOCK(res = futimens(fi->fh, ts));
+    }
     if (res == -1)
         return -errno;
 
-    return 0;
-}
-
-static int rewrite_utimens(const char *path, const struct timespec ts[2]) {
-    int res;
-    struct timeval tv[2];
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
-
-    tv[0].tv_sec = ts[0].tv_sec;
-    tv[0].tv_usec = ts[0].tv_nsec / 1000;
-    tv[1].tv_sec = ts[1].tv_sec;
-    tv[1].tv_usec = ts[1].tv_nsec / 1000;
-
-    RLOCK(res = utimes(new_path, tv));
-    free(new_path);
-    if (res == -1)
-        return -errno;
-
-    return 0;
-}
-
-static int rewrite_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    int fd;
-    char *new_path = rewrite(path);
-    if (new_path == NULL)
-        return -ENOMEM;
-
-    WLOCK(fd = open(new_path, fi->flags | O_CREAT, mode));
-    free(new_path);
-    if (fd == -1)
-        return -errno;
-
-    fi->fh = fd;
     return 0;
 }
 
@@ -411,6 +417,27 @@ static int rewrite_read(const char *path, char *buf, size_t size, off_t offset,
     return res;
 }
 
+static int rewrite_read_buf(const char *path, struct fuse_bufvec **bufp,
+                            size_t size, off_t offset, struct fuse_file_info *fi) {
+    struct fuse_bufvec *src;
+
+    (void) path;
+
+    src = malloc(sizeof(struct fuse_bufvec));
+    if (src == NULL)
+        return -ENOMEM;
+
+    *src = FUSE_BUFVEC_INIT(size);
+
+    src->buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    src->buf[0].fd = fi->fh;
+    src->buf[0].pos = offset;
+
+    *bufp = src;
+
+    return 0;
+}
+
 static int rewrite_write(const char *path, const char *buf, size_t size,
         off_t offset, struct fuse_file_info *fi) {
     int res;
@@ -421,6 +448,19 @@ static int rewrite_write(const char *path, const char *buf, size_t size,
         res = -errno;
 
     return res;
+}
+
+static int rewrite_write_buf(const char *path, struct fuse_bufvec *buf,
+                             off_t offset, struct fuse_file_info *fi) {
+    struct fuse_bufvec dst = FUSE_BUFVEC_INIT(fuse_buf_size(buf));
+
+    (void) path;
+
+    dst.buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    dst.buf[0].fd = fi->fh;
+    dst.buf[0].pos = offset;
+
+    return fuse_buf_copy(&dst, buf, FUSE_BUF_SPLICE_NONBLOCK);
 }
 
 static int rewrite_statfs(const char *path, struct statvfs *stbuf) {
@@ -474,6 +514,14 @@ static int rewrite_fsync(const char *path, int isdatasync,
         return -errno;
 
     return 0;
+}
+
+static int rewrite_fallocate(const char *path, int mode,
+                             off_t offset, off_t length, struct fuse_file_info *fi) {
+    (void) path;
+    if (mode)
+        return -EOPNOTSUPP;
+    return -posix_fallocate(fi->fh, offset, length);
 }
 
 #ifdef HAVE_SETXATTR
@@ -532,39 +580,21 @@ static int rewrite_removexattr(const char *path, const char *name) {
 }
 #endif /* HAVE_SETXATTR */
 
-static int rewrite_lock(const char *path, struct fuse_file_info *fi, int cmd,
-        struct flock *lock) {
-    int res;
-
-    (void) path;
-    RLOCK(res = fcntl(fi->fh, cmd, lock));
-    if (res == -1)
-        return -errno;
-
-    return res;
-}
-
 static struct fuse_operations rewrite_oper = {
+    .init        = rewrite_init,
+
     .getattr     = rewrite_getattr,
-    .fgetattr    = rewrite_fgetattr,
-    .access      = rewrite_access,
     .readlink    = rewrite_readlink,
-    .opendir     = rewrite_opendir,
-    .readdir     = rewrite_readdir,
-    .releasedir  = rewrite_releasedir,
     .mknod       = rewrite_mknod,
     .mkdir       = rewrite_mkdir,
-    .symlink     = rewrite_symlink,
     .unlink      = rewrite_unlink,
     .rmdir       = rewrite_rmdir,
+    .symlink     = rewrite_symlink,
     .rename      = rewrite_rename,
     .link        = rewrite_link,
     .chmod       = rewrite_chmod,
     .chown       = rewrite_chown,
     .truncate    = rewrite_truncate,
-    .ftruncate   = rewrite_ftruncate,
-    .utimens     = rewrite_utimens,
-    .create      = rewrite_create,
     .open        = rewrite_open,
     .read        = rewrite_read,
     .write       = rewrite_write,
@@ -572,15 +602,21 @@ static struct fuse_operations rewrite_oper = {
     .flush       = rewrite_flush,
     .release     = rewrite_release,
     .fsync       = rewrite_fsync,
+    .opendir     = rewrite_opendir,
+    .readdir     = rewrite_readdir,
+    .releasedir  = rewrite_releasedir,
+    .access      = rewrite_access,
+    .utimens     = rewrite_utimens,
+    .read_buf    = rewrite_read_buf,
+    .write_buf   = rewrite_write_buf,
+    .fallocate   = rewrite_fallocate,
+
 #ifdef HAVE_SETXATTR
     .setxattr    = rewrite_setxattr,
     .getxattr    = rewrite_getxattr,
     .listxattr   = rewrite_listxattr,
     .removexattr = rewrite_removexattr,
 #endif
-    .lock        = rewrite_lock,
-
-    .flag_nullpath_ok = 1,
 };
 
 int main(int argc, char *argv[]) {

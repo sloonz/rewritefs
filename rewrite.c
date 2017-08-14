@@ -1,4 +1,4 @@
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 31
 #define _GNU_SOURCE
 
 #include <limits.h>
@@ -302,9 +302,7 @@ enum {
 #define REWRITE_OPT(t, p, v) { t, offsetof(struct config, p), v }
 
 static struct fuse_opt options[] = {
-    REWRITE_OPT("-c %s",           config_file, 0),
     REWRITE_OPT("config=%s",       config_file, 0),
-    REWRITE_OPT("-v %i",           verbose, 0),
     REWRITE_OPT("verbose=%i",      verbose, 0),
 
     FUSE_OPT_KEY("-V",             KEY_VERSION),
@@ -331,17 +329,16 @@ static int options_proc(void *data, const char *arg, int key, struct fuse_args *
 
     case KEY_HELP:
         fprintf(stderr,
-                "usage: %s source mountpoint [options]\n"
-                "\n"
-                "general options:\n"
-                "    -o opt,[opt...]  mount options\n"
-                "    -h   --help      print help\n"
-                "    -V   --version   print version\n"
+                "usage: %s [-o options] source mountpoint\n"
                 "\n"
                 "rewritefs options:\n"
-                "    -c CONFIG        path to configuration file\n"
-                "    -r PATH          path to source filesystem\n"
-                "    -v LEVEL         verbose level [to be used with -f or -d]\n"
+                "    -o opt,[opt...]  mount options (see mount.fuse)\n"
+                "    -h   --help      Fuse help\n"
+                "    -V   --version   print version\n"
+                "    -f               foreground\n"
+                "    -d               debug\n"
+                "    -o config=CONFIG path to configuration file\n"
+                "    -o verbose=LEVEL verbose level [to be used with -f or -d] (LEVEL is 1 to 4)\n"
                 "\n",
                 outargs->argv[0]);
         fuse_opt_add_arg(outargs, "-ho");
@@ -362,7 +359,7 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
     memset(&config, 0, sizeof(config));
     fuse_opt_parse(outargs, &config, options, options_proc);
     fuse_opt_add_arg(outargs, "-o");
-    fuse_opt_add_arg(outargs, "use_ino,default_permissions");
+    fuse_opt_add_arg(outargs, "default_permissions");
 
     if(config.orig_fs == NULL) {
         fprintf(stderr, "missing source argument\n");

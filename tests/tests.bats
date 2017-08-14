@@ -18,13 +18,13 @@ setup() {
 
 teardown() {
     if [ -f "$TESTDIR/egg" ] ; then
-        fusermount -u "$TESTDIR"
+        fusermount3 -u "$TESTDIR"
     fi
     rm -rf "$BATS_TEST_DIRNAME/source/tmp" 
 }
 
 mount_rewritefs() {
-    "$BATS_TEST_DIRNAME/../rewritefs" -r "$BATS_TEST_DIRNAME/source" -c "$CFGFILE" "$TESTDIR"
+    "$BATS_TEST_DIRNAME/../rewritefs" -o "config=$CFGFILE" "$BATS_TEST_DIRNAME/source" "$TESTDIR"
 }
 
 @test "Test simple rules" {
@@ -145,4 +145,29 @@ EOF
     run cat "$TESTDIR/Fo/bar"
     [ "$status" = 0 ]
     [ "$output" = "bar" ]
+}
+
+@test "Test FIFO" {
+    echo -n > "$CFGFILE"
+
+    mount_rewritefs
+
+    mkfifo "$TESTDIR/tmp/test"
+    echo "hello" > "$TESTDIR/tmp/test" &
+    run cat "$TESTDIR/tmp/test"
+}
+
+@test "Check that we can read opened & deleted files" {
+    echo -n > "$CFGFILE"
+
+    mount_rewritefs
+
+    echo hello > "$TESTDIR/tmp/test"
+    exec 42<"$TESTDIR/tmp/test"
+
+    run cat <&42
+    [ "$status" = 0 ]
+    [ "$output" = "hello" ]
+
+    exec 42>&-
 }
