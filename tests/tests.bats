@@ -171,3 +171,22 @@ EOF
 
     exec 42>&-
 }
+
+@test "Check umask" {
+    echo -n > "$CFGFILE"
+
+    mount_rewritefs
+
+    # touch creates files with mode 666, so we can't except to get 777 even with umask 0
+    umask 0
+    touch "$TESTDIR/tmp/a"
+    run stat -c "%a" "$TESTDIR/tmp/a"
+    [ "$status" = 0 ]
+    [ "$output" = "666" ]
+
+    umask 027
+    mkdir "$TESTDIR/tmp/b"
+    run stat -c "%a" "$TESTDIR/tmp/b"
+    [ "$status" = 0 ]
+    [ "$output" = "750" ]
+}
