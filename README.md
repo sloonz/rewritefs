@@ -47,12 +47,14 @@ Make sure that `user_allow_other` is enabled in `/etc/fuse.conf`.
 
 ### Example 1
 
-This simple example show how to achieve the same effect than libetc:
+The following example demonstrates how one can get the program to do what libetc does :
 
     m#^(?!\.)# .
     m#^\.(cache|config|local)# .
     m#^\.# .config/
 
+That is, all dotfiles will be put in `.config/` (without the leading dot), excepting
+`.cache` and `.local`.
 
 ### Example 2
 

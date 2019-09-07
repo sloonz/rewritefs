@@ -1,7 +1,7 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "REWRITEFS" "1" "April 2017" "" ""
+.TH "REWRITEFS" "1" "September 2019" "" ""
 .
 .SH "NAME"
 \fBrewritefs\fR \- mod_rewrite\-like FUSE filesystem
@@ -36,7 +36,7 @@ For a complete description of the configuration syntax format, see below\.
 Make sure that \fBuser_allow_other\fR is enabled in \fB/etc/fuse\.conf\fR\.
 .
 .SS "Example 1"
-This simple example show how to achieve the same effect than libetc:
+The following example demonstrates how one can get the program to do what libetc does :
 .
 .IP "" 4
 .
@@ -49,6 +49,9 @@ m#^\e\.# \.config/
 .fi
 .
 .IP "" 0
+.
+.P
+That is, all dotfiles will be put in \fB\.config/\fR (without the leading dot), excepting \fB\.cache\fR and \fB\.local\fR\.
 .
 .SS "Example 2"
 This example show how to use contexts ; it is like the former, but ignore the rewrite rules for busybox:
