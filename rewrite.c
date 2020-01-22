@@ -42,6 +42,7 @@ struct rewrite_context {
 struct config {
     char *config_file;
     char *orig_fs;
+    int orig_fd;
     char *mount_point;
     struct rewrite_context *contexts;
     int verbose;
@@ -368,13 +369,11 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
         fprintf(stderr, "missing source argument\n");
         exit(1);
     } else {
-        config.orig_fs = canonicalize_file_name(config.orig_fs);
-        if(config.orig_fs == NULL) {
+        config.orig_fd = open(config.orig_fs, O_PATH);
+        if(config.orig_fd == -1) {
             fprintf(stderr, "Cannot open source directory: %s\n", strerror(errno));
             exit(1);
         }
-        if(config.orig_fs[strlen(config.orig_fs)-1] == '/')
-            config.orig_fs[strlen(config.orig_fs)-1] = 0;
     }
 
     if(config.mount_point == NULL) {
@@ -444,11 +443,9 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     char *rewritten, *rewritten_path, *rewritten_path_buf = NULL;
     
     if(rule == NULL || rule->rewritten_path == NULL) {
-        rewritten = strcat(strcpy(malloc(strlen(config.orig_fs)+strlen(path)+1), config.orig_fs),
-                      path);
-        DEBUG(2, "  (ignored) %s -> %s\n", path, rewritten);
+        DEBUG(2, "  (ignored) %s -> %s\n", path, path + 1);
         DEBUG(3, "\n");
-        return rewritten;
+        return strdup(path[1] == '\0' ? "." : path+1);
     }
     
     /* Fill ovector */
@@ -502,19 +499,18 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
         rewritten_path = rule->rewritten_path;
     }
 
-    DEBUG(4, "  orig_fs = %s\n",  config.orig_fs);
-    DEBUG(4, "  begin = %s\n", strndup(path, ovector[0] + 1));
+    DEBUG(4, "  path = %s\n", path);
+    DEBUG(4, "  begin = %s\n", strndup(path + 1, ovector[0]));
     DEBUG(4, "  rewritten = %s\n", rewritten_path);
     DEBUG(4, "  end = %s\n", path + 1 + ovector[1]);
 
-    /* rewritten = orig_fs + part of path before the matched part +
+    /* rewritten = part of path before the matched part +
        rewritten_path + part of path after the matched path */
-    rewritten = malloc(strlen(config.orig_fs) + strlen(rewritten_path)
-                       + 1 /* \0 */
+    rewritten = malloc(strlen(rewritten_path) /* + 1 ('\0') - 1 (initial '/') = 0 */
                        + 1 + ovector[0] /* before */
                        + strlen(path) - ovector[1] /* after */);
-    strcpy(rewritten, config.orig_fs);
-    strncat(rewritten, path, 1 + ovector[0]);
+    rewritten[0] = 0;
+    strncat(rewritten, path + 1, ovector[0]);
     strcat(rewritten, rewritten_path);
     strcat(rewritten, path + 1 + ovector[1]);
 
@@ -569,4 +565,8 @@ char *rewrite(const char *path) {
     
     free(caller);
     return apply_rule(path, NULL);
+}
+
+int orig_fd() {
+    return config.orig_fd;
 }
