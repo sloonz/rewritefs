@@ -1,3 +1,15 @@
+(develop):
+
+ * Update to FUSE 3
+
+ * `autocreate` option added
+
+ * Support for overmount (destination and source mount point equals)
+
+ * Support for sparse files
+
+ * Locking support
+
 14 August 2017:
 
  * The `nonempty` option is removed, its behavior now enabled by default.
