@@ -153,7 +153,7 @@ metadata (permissions, mtime and so on), which is rewritten into
 
 ### Regular expressions
 
-The Regexp syntax is similar to Perl. Recognized flags are : **i**, **x**, **u**.
+The Regexp syntax is similar to Perl. Recognized flags are : **i**, **x**, **u** and **g**.
 Example of valid regexps are:
 
     /foo/i
@@ -168,6 +168,8 @@ Note that m{foo} is not recognized ; you must use m{foo{
 
 **i** and **x** has the same meaning than in Perl. **u** means "use utf-8" (both for
 pattern and input string).
+
+The **g** flag is described in the "Rewrite rule" section.
 
 ### Command line match
  
@@ -198,6 +200,14 @@ You can access captured groups as backreferences (`\1`, `\2`, …).
 
 A regular expression can be written in more than one line, in particular in
 conjunction with the **x** flag.
+
+The **g** flag indicates that the substition is global, and not limited
+to the first match. Consider this simple rule:
+
+    /:/ -
+
+Applied to `A:B:C`, the rewritten path will be `A-B:C`. With the **g**
+flag, the rewritten path will be `A-B-C`.
  
 ### Comment
   

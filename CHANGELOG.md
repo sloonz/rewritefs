@@ -10,6 +10,8 @@
 
  * Locking support
 
+ * Add the **/g** flag in regular expressions
+
 14 August 2017:
 
  * The `nonempty` option is removed, its behavior now enabled by default.

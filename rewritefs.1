@@ -183,7 +183,7 @@ Rewritefs does not rewrite \fBreaddir()\fR, since it would need "backwards" rewr
 .SH "Configuration syntax format"
 .
 .SS "Regular expressions"
-The Regexp syntax is similar to Perl\. Recognized flags are : \fBi\fR, \fBx\fR, \fBu\fR\. Example of valid regexps are:
+The Regexp syntax is similar to Perl\. Recognized flags are : \fBi\fR, \fBx\fR, \fBu\fR and \fBg\fR\. Example of valid regexps are:
 .
 .IP "" 4
 .
@@ -206,6 +206,9 @@ Note that m{foo} is not recognized ; you must use m{foo{
 .
 .P
 \fBi\fR and \fBx\fR has the same meaning than in Perl\. \fBu\fR means "use utf\-8" (both for pattern and input string)\.
+.
+.P
+The \fBg\fR flag is described in the "Rewrite rule" section\.
 .
 .SS "Command line match"
 Syntax: \fB\-\fR \fIREGEXP\fR
@@ -243,6 +246,22 @@ You can access captured groups as backreferences (\fB\e1\fR, \fB\e2\fR, …)\.
 .
 .P
 A regular expression can be written in more than one line, in particular in conjunction with the \fBx\fR flag\.
+.
+.P
+The \fBg\fR flag indicates that the substition is global, and not limited to the first match\. Consider this simple rule:
+.
+.IP "" 4
+.
+.nf
+
+/:/ \-
+.
+.fi
+.
+.IP "" 0
+.
+.P
+Applied to \fBA:B:C\fR, the rewritten path will be \fBA\-B:C\fR\. With the \fBg\fR flag, the rewritten path will be \fBA\-B\-C\fR\.
 .
 .SS "Comment"
 A line starting with "#"

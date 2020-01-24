@@ -236,3 +236,15 @@ EOF
     [ "$status" = 0 ]
     [ "$output" = "hello" ]
 }
+
+@test "Test regexp g flag" {
+    cat > "$CFGFILE" << EOF
+/i/g o
+EOF
+
+    mount_rewritefs
+
+    run cat "$TESTDIR/fii/bar"
+    [ "$status" = 0 ]
+    [ "$output" = "bar" ]
+}

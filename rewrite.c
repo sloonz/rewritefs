@@ -28,12 +28,25 @@ struct regexp {
     pcre *regexp;
     pcre_extra *extra;
     int captures;
+    int replace_all;
     char *raw;
+};
+
+struct replacement_part {
+    int group;
+    char *data;
+    int len;
+};
+
+struct replacement_template {
+    int nparts;
+    char *raw;
+    struct replacement_part *parts;
 };
 
 struct rewrite_rule {
     struct regexp *filename_regexp;
-    char *rewritten_path; /* NULL for "." */
+    struct replacement_template *rewritten_path; /* NULL for "." */
     struct rewrite_rule *next;
 };
 
@@ -93,6 +106,14 @@ static void parse_comment(FILE *fd) {
     } while(c != '\n' && c != EOF);
 }
 
+static char *string_new(int *string_cap, int *string_size) {
+    *string_cap = 255;
+    *string_size = 0;
+    char *s = abmalloc(*string_cap);
+    s[0] = '\0';
+    return s;
+}
+
 /* append c to string, extending it if necessary */
 static void string_append(char **string, char c, int *string_cap, int *string_size) {
     if(*string_cap == *string_size + 1) {
@@ -110,13 +131,11 @@ static void string_append(char **string, char c, int *string_cap, int *string_si
 
 /* Consume the string until reaching sep */
 static void parse_string(FILE *fd, char **string, char sep) {
-    int string_cap = 255;
-    int string_size = 0;
+    int string_cap, string_size;
     int escaped = 0;
     int c;
     
-    *string = (char*)abmalloc(string_cap);
-    **string = 0;
+    *string = string_new(&string_cap, &string_size);
     for(;;) {
         c = getc(fd);
         if(c == EOF) {
@@ -150,6 +169,7 @@ static void parse_string(FILE *fd, char **string, char sep) {
 static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     char *regexp_body;
     int regexp_flags = 0;
+    int replace_all = 0;
     const char *error;
     int offset;
     int c;
@@ -185,6 +205,9 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
         case 'u':
             regexp_flags |= PCRE_UCP | PCRE_UTF8;
             break;
+        case 'g':
+            replace_all = 1;
+            break;
         case EOF:
             fprintf(stderr, "Unexpected EOF\n");
             exit(1);
@@ -196,6 +219,8 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     
     /* Compilation */
     *regexp = abmalloc(sizeof(struct regexp));
+
+    (*regexp)->replace_all = replace_all;
     
     (*regexp)->regexp = pcre_compile(regexp_body, regexp_flags, &error, &offset, NULL);
     if((*regexp)->regexp == NULL) {
@@ -246,6 +271,64 @@ static void parse_item(FILE *fd, enum type *type, struct regexp **regexp, char *
     }
 }
 
+static struct replacement_part *alloc_part(struct replacement_part **parts, int *nparts) {
+    *parts = reallocarray(*parts, ++(*nparts), sizeof(struct replacement_part));
+    if(*parts == NULL) {
+        perror("reallocarray");
+        abort();
+    }
+    return (*parts) + (*nparts - 1);
+}
+
+static struct replacement_template *parse_replacement_template(char *tpl) {
+    int buf_cap, buf_size;
+    char *buf = string_new(&buf_cap, &buf_size);
+
+    int nparts = 0;
+    struct replacement_part *parts = NULL;
+    struct replacement_part *cur_part;
+
+    int escaped = 0;
+    for(int i = 0; i < strlen(tpl); i++) {
+        if(escaped) {
+            if(tpl[i] >= '0' && tpl[i] <= '9') {
+                if(buf_size > 0) {
+                    cur_part = alloc_part(&parts, &nparts);
+                    cur_part->data = buf;
+                    cur_part->len = buf_size;
+                    buf = string_new(&buf_cap, &buf_size);
+                }
+
+                cur_part = alloc_part(&parts, &nparts);
+                cur_part->data = NULL;
+                cur_part->group = tpl[i] - '0';
+            } else {
+                string_append(&buf, tpl[i], &buf_cap, &buf_size);
+            }
+            escaped = 0;
+        } else {
+            if(tpl[i] == '\\') {
+                escaped = 1;
+            } else {
+                string_append(&buf, tpl[i], &buf_cap, &buf_size);
+            }
+        }
+    }
+
+    if(nparts == 0 || buf_size > 0) {
+        cur_part = alloc_part(&parts, &nparts);
+        cur_part->data = buf;
+        cur_part->len = buf_size;
+    }
+
+    struct replacement_template *res = abmalloc(sizeof(struct replacement_template));
+    res->parts = parts;
+    res->nparts = nparts;
+    res->raw = tpl;
+
+    return res;
+}
+
 static void parse_config(FILE *fd) {
     enum type type;
     struct regexp *regexp;
@@ -272,7 +355,7 @@ static void parse_config(FILE *fd) {
         } else if(type == RULE) {
             rule = abmalloc(sizeof(struct rewrite_rule));
             rule->filename_regexp = regexp;
-            rule->rewritten_path = (!strcmp(string, ".")) ? (free(string), NULL) : string;
+            rule->rewritten_path = (!strcmp(string, ".")) ? (free(string), NULL) : parse_replacement_template(string);
             rule->next = NULL;
             if(last_rule)
                 last_rule->next = rule;
@@ -384,7 +467,7 @@ void parse_args(int argc, char **argv, struct fuse_args *outargs) {
         for(ctx = config.contexts; ctx != NULL; ctx = ctx->next) {
             DEBUG(1, "CTX \"%s\":\n", ctx->cmdline ? ctx->cmdline->raw : "default");
             for(rule = ctx->rules; rule != NULL; rule = rule->next)
-                DEBUG(1, "  \"%s\" -> \"%s\"\n", rule->filename_regexp->raw, rule->rewritten_path ? rule->rewritten_path : "(don't rewrite)");
+                DEBUG(1, "  \"%s\" -> \"%s\"\n", rule->filename_regexp->raw, rule->rewritten_path ? rule->rewritten_path->raw : "(don't rewrite)");
         }
         DEBUG(1, "\n");
     }
@@ -450,89 +533,105 @@ done:
     return result;
 }
 
-char *apply_rule(const char *path, struct rewrite_rule *rule) {
-    int *ovector, nvec;
-    char *rewritten, *rewritten_path, *rewritten_path_buf = NULL;
+char *regexp_replace(struct regexp *re, const char *subject, struct replacement_template *tpl) {
+    int nvec, repl_sz, *ovector = NULL;
+    char *result, *repl, *repl_buf = NULL, *suffix_buf = NULL;
+    const char *suffix;
     
+    /* Fill ovector */
+    nvec = (re->captures + 1) * 3;
+    ovector = calloc(nvec, sizeof(int));
+    if(ovector == NULL) {
+        result = NULL;
+        goto end;
+    }
+
+    int scount = pcre_exec(re->regexp, re->extra, subject,
+                           strlen(subject), 0, 0, ovector, nvec);
+
+    if(scount == PCRE_ERROR_NOMATCH)
+        return strdup(subject);
+
+    /* Replace backreferences */
+    if(tpl->nparts > 1 || tpl->parts[0].data == NULL) {
+        int i, wpos, group;
+
+        for(i = 0, repl_sz = 0; i < tpl->nparts; i++) {
+            if(tpl->parts[i].data == NULL) {
+                group = tpl->parts[i].group;
+                if(group < scount) {
+                    repl_sz += ovector[group*2+1] - ovector[group*2];
+                }
+            } else {
+                repl_sz += tpl->parts[i].len;
+            }
+        }
+
+        repl = repl_buf = malloc(repl_sz + 1);
+        if(repl == NULL) {
+            result = NULL;
+            goto end;
+        }
+
+        for(i = 0, wpos = 0; i < tpl->nparts; i++) {
+            if(tpl->parts[i].data == NULL) {
+                group = tpl->parts[i].group;
+                if(group < scount) {
+                    strncpy(repl + wpos, subject + ovector[group*2], ovector[group*2+1]-ovector[group*2]);
+                    wpos += ovector[group*2+1] - ovector[group*2];
+                }
+            } else {
+                strcpy(repl + wpos, tpl->parts[i].data);
+                wpos += tpl->parts[i].len;
+            }
+        }
+        repl[wpos] = '\0';
+    } else {
+        repl = tpl->parts[0].data;
+        repl_sz = tpl->parts[0].len;
+    }
+
+    suffix = subject + ovector[1];
+    if(re->replace_all && suffix[0] != '\0') {
+        suffix = suffix_buf = regexp_replace(re, suffix, tpl);
+        if(suffix == NULL) {
+            result = NULL;
+            goto end;
+        }
+    }
+
+    DEBUG(4, "  subject = %s\n", subject);
+    DEBUG(4, "  prefix = %s\n", strndup(subject, ovector[0]));
+    DEBUG(4, "  replaced match = %s\n", repl);
+    DEBUG(4, "  suffix = %s\n", suffix);
+
+    result = malloc(ovector[0] + repl_sz + strlen(suffix) + 1);
+    if(result == NULL) {
+        result = NULL;
+        goto end;
+    }
+
+    result[0] = 0;
+    strncat(result, subject, ovector[0]);
+    strcat(result, repl);
+    strcat(result, suffix);
+
+end:
+    free(repl_buf);
+    free(suffix_buf);
+    free(ovector);
+
+    return result;
+}
+
+char *apply_rule(const char *path, struct rewrite_rule *rule) {
     if(rule == NULL || rule->rewritten_path == NULL) {
         DEBUG(2, "  (ignored) %s -> %s\n", path, path + 1);
         DEBUG(3, "\n");
         return strdup(path[1] == '\0' ? "." : path+1);
     }
-    
-    /* Fill ovector */
-    nvec = (rule->filename_regexp->captures + 1) * 3;
-    ovector = calloc(nvec, sizeof(int));
-    int scount = pcre_exec(rule->filename_regexp->regexp,
-                           rule->filename_regexp->extra, path+1,
-                           strlen(path)-1, 0, 0, ovector, nvec);
 
-    /* Replace backreferences if we have capturing groups */
-    if(scount > 1) {
-        int i, wpos, group;
-        int rewritten_size = strlen(rule->rewritten_path);
-
-        for(i = 0; i < strlen(rule->rewritten_path); i++) {
-            if(rule->rewritten_path[i] == '\\') {
-                i++;
-                group = rule->rewritten_path[i] - '0';
-                if(rule->rewritten_path[i] >= '0' && rule->rewritten_path[i] <= '9' && group >= 1 && group <= scount-1) {
-                    rewritten_size += ovector[group*2+1] - ovector[group*2] - 2;
-                } else if(rule->rewritten_path[i] == '\\') {
-                    rewritten_size--;
-                }
-            }
-        }
-
-        rewritten_path = rewritten_path_buf = malloc(rewritten_size + 1);
-        if(rewritten_path == NULL)
-            return NULL;
-
-        for(i = 0, wpos = 0; i < strlen(rule->rewritten_path); i++) {
-            if(rule->rewritten_path[i] == '\\') {
-                i++;
-                group = rule->rewritten_path[i] - '0';
-                if(rule->rewritten_path[i] >= '0' && rule->rewritten_path[i] <= '9' && group >= 1 && group <= scount-1) {
-                    strncpy(rewritten_path + wpos,
-                            path + ovector[group*2] + 1,
-                            ovector[group*2+1] - ovector[group*2]);
-                    wpos += ovector[group*2+1] - ovector[group*2];
-                } else if(rule->rewritten_path[i] == '\\') {
-                    rewritten_path[wpos++] = '\\';
-                } else {
-                    rewritten_path[wpos++] = '\\';
-                    rewritten_path[wpos++] = rule->rewritten_path[i];
-                }
-            } else {
-                rewritten_path[wpos++] = rule->rewritten_path[i];
-            }
-        }
-
-        rewritten_path[rewritten_size] = '\0';
-    } else {
-        rewritten_path = rule->rewritten_path;
-    }
-
-    DEBUG(4, "  path = %s\n", path);
-    DEBUG(4, "  begin = %s\n", strndup(path + 1, ovector[0]));
-    DEBUG(4, "  rewritten = %s\n", rewritten_path);
-    DEBUG(4, "  end = %s\n", path + 1 + ovector[1]);
-
-    /* rewritten = part of path before the matched part +
-       rewritten_path + part of path after the matched path */
-    rewritten = malloc(strlen(rewritten_path) /* + 1 ('\0') - 1 (initial '/') = 0 */
-                       + 1 + ovector[0] /* before */
-                       + strlen(path) - ovector[1] /* after */);
-    if(rewritten == NULL)
-        return NULL;
-
-    rewritten[0] = 0;
-    strncat(rewritten, path + 1, ovector[0]);
-    strcat(rewritten, rewritten_path);
-    strcat(rewritten, path + 1 + ovector[1]);
-
-    free(rewritten_path_buf);
-    free(ovector);
+    char *rewritten = regexp_replace(rule->filename_regexp, path + 1, rule->rewritten_path);
 
     if(config.autocreate) {
         if(mkdir_parents(rewritten, (S_IRWXU | S_IRWXG | S_IRWXO)) == -1)
@@ -542,6 +641,7 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
 
     DEBUG(1, "  %s -> %s\n", path, rewritten);
     DEBUG(3, "\n");
+
     return rewritten;
 }
 
@@ -584,7 +684,7 @@ char *rewrite(const char *path) {
                     fprintf(stderr, "WARNING: pcre_exec returned %d\n", res);
                 DEBUG(3, "    RULE NOMATCH \"%s\"\n", rule->filename_regexp->raw);
             } else {
-                DEBUG(3, "    RULE OK \"%s\" \"%s\"\n", rule->filename_regexp->raw, rule->rewritten_path ? rule->rewritten_path : "(don't rewrite)");
+                DEBUG(3, "    RULE OK \"%s\" \"%s\"\n", rule->filename_regexp->raw, rule->rewritten_path ? rule->rewritten_path->raw : "(don't rewrite)");
                 free(caller);
                 return apply_rule(path, rule);
             }
