@@ -67,6 +67,15 @@ static struct config config;
 /*
  * Config-file parsing
  */
+static void *abmalloc(size_t sz) {
+    void *res = malloc(sz);
+    if(res == NULL) {
+        perror("malloc");
+        abort();
+    }
+    return res;
+}
+
 /* Consume all blanks (according to isspace) */
 static void parse_blanks(FILE *fd) {
     int c;
@@ -106,12 +115,8 @@ static void parse_string(FILE *fd, char **string, char sep) {
     int escaped = 0;
     int c;
     
-    *string = (char*)malloc(string_cap);
+    *string = (char*)abmalloc(string_cap);
     **string = 0;
-    if(*string == NULL) {
-        perror("malloc");
-        abort();
-    }
     for(;;) {
         c = getc(fd);
         if(c == EOF) {
@@ -190,11 +195,7 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     }
     
     /* Compilation */
-    *regexp = malloc(sizeof(struct regexp));
-    if(regexp == NULL) {
-        perror("malloc");
-        abort();
-    }
+    *regexp = abmalloc(sizeof(struct regexp));
     
     (*regexp)->regexp = pcre_compile(regexp_body, regexp_flags, &error, &offset, NULL);
     if((*regexp)->regexp == NULL) {
@@ -253,38 +254,23 @@ static void parse_config(FILE *fd) {
     struct rewrite_rule *rule, *last_rule = NULL;
     
     struct rewrite_context *new_context;
-    struct rewrite_context *current_context = malloc(sizeof(struct rewrite_context));
-    if(current_context == NULL) {
-        perror("malloc");
-        abort();
-    } else {
-        current_context->cmdline = NULL;
-        current_context->rules = NULL;
-        current_context->next = NULL;
-        config.contexts = current_context;
-    }
+    struct rewrite_context *current_context = abmalloc(sizeof(struct rewrite_context));
+    current_context->cmdline = NULL;
+    current_context->rules = NULL;
+    current_context->next = NULL;
+    config.contexts = current_context;
     
     do {
         parse_item(fd, &type, &regexp, &string);
         if(type == CMDLINE) {
-            new_context = malloc(sizeof(struct rewrite_context));
-            if(new_context == NULL) {
-                perror("malloc");
-                abort();
-            } else {
-                new_context->cmdline = !strcmp(regexp->raw, "") ? NULL : regexp;
-                new_context->rules = last_rule = NULL;
-                new_context->next = NULL;
-                current_context->next = new_context;
-                current_context = new_context;
-            }
+            new_context = abmalloc(sizeof(struct rewrite_context));
+            new_context->cmdline = !strcmp(regexp->raw, "") ? NULL : regexp;
+            new_context->rules = last_rule = NULL;
+            new_context->next = NULL;
+            current_context->next = new_context;
+            current_context = new_context;
         } else if(type == RULE) {
-            rule = malloc(sizeof(struct rewrite_rule));
-            if(rule == NULL) {
-                perror("malloc");
-                abort();
-            }
-            
+            rule = abmalloc(sizeof(struct rewrite_rule));
             rule->filename_regexp = regexp;
             rule->rewritten_path = (!strcmp(string, ".")) ? (free(string), NULL) : string;
             rule->next = NULL;
@@ -414,8 +400,7 @@ char *get_caller_cmdline() {
     char *ret = malloc(cap);
     
     if(ret == NULL) {
-        perror("malloc");
-        abort();
+        return NULL;
     } else {
         *ret = 0;
     }
@@ -500,6 +485,8 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
         }
 
         rewritten_path = rewritten_path_buf = malloc(rewritten_size + 1);
+        if(rewritten_path == NULL)
+            return NULL;
 
         for(i = 0, wpos = 0; i < strlen(rule->rewritten_path); i++) {
             if(rule->rewritten_path[i] == '\\') {
@@ -536,6 +523,9 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     rewritten = malloc(strlen(rewritten_path) /* + 1 ('\0') - 1 (initial '/') = 0 */
                        + 1 + ovector[0] /* before */
                        + strlen(path) - ovector[1] /* after */);
+    if(rewritten == NULL)
+        return NULL;
+
     rewritten[0] = 0;
     strncat(rewritten, path + 1, ovector[0]);
     strcat(rewritten, rewritten_path);
@@ -566,8 +556,13 @@ char *rewrite(const char *path) {
     
     for(ctx = config.contexts; ctx != NULL; ctx = ctx->next) {
         if(ctx->cmdline) {
-            if(!caller)
+            if(!caller) {
                 caller = get_caller_cmdline();
+                if(caller == NULL) {
+                    fprintf(stderr, "WARNING: cannot obtain caller command line\n");
+                    continue;
+                }
+            }
             res = pcre_exec(ctx->cmdline->regexp, ctx->cmdline->extra, caller,
                 strlen(caller), 0, 0, NULL, 0);
             if(res < 0) {

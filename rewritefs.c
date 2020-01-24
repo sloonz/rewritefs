@@ -100,7 +100,7 @@ struct rewrite_dirp {
 };
 
 static int rewrite_opendir(const char *path, struct fuse_file_info *fi) {
-    int fd, res;
+    int fd;
     char *new_path;
     struct rewrite_dirp *d = malloc(sizeof(struct rewrite_dirp));
     if (d == NULL)
@@ -113,18 +113,16 @@ static int rewrite_opendir(const char *path, struct fuse_file_info *fi) {
     RLOCK(fd = openat(orig_fd(), new_path, O_RDONLY));
     free(new_path);
     if(fd == -1) {
-        res = -errno;
         free(d);
-        return res;
+        return -errno;
     }
 
     RLOCK(d->dp = fdopendir(fd));
 
     if (d->dp == NULL) {
-        res = -errno;
         close(fd);
         free(d);
-        return res;
+        return -errno;
     }
     d->offset = 0;
     d->entry = NULL;
@@ -216,9 +214,9 @@ static int rewrite_unlink(const char *path) {
         return -ENOMEM;
 
     RLOCK(res = unlinkat(orig_fd(), new_path, 0));
+    free(new_path);
     if (res == -1)
         return -errno;
-    free(new_path);
 
     return 0;
 }
@@ -230,9 +228,9 @@ static int rewrite_rmdir(const char *path) {
         return -ENOMEM;
 
     RLOCK(res = unlinkat(orig_fd(), new_path, AT_REMOVEDIR));
+    free(new_path);
     if (res == -1)
         return -errno;
-    free(new_path);
 
     return 0;
 }
@@ -359,7 +357,7 @@ static int rewrite_truncate(const char *path, off_t size,
     if (res == -1)
         return -errno;
 
-    return res;
+    return 0;
 }
 
 static int rewrite_utimens(const char *path, const struct timespec ts[2],
@@ -407,9 +405,9 @@ static int rewrite_read(const char *path, char *buf, size_t size, off_t offset,
     (void) path;
     RLOCK(res = pread(fi->fh, buf, size, offset));
     if (res == -1)
-        res = -errno;
+        return -errno;
 
-    return res;
+    return 0;
 }
 
 static int rewrite_read_buf(const char *path, struct fuse_bufvec **bufp,
@@ -440,7 +438,7 @@ static int rewrite_write(const char *path, const char *buf, size_t size,
     (void) path;
     RLOCK(res = pwrite(fi->fh, buf, size, offset));
     if (res == -1)
-        res = -errno;
+        return -errno;
 
     return res;
 }
@@ -560,7 +558,7 @@ static int rewrite_getxattr(const char *path, const char *name, char *value,
     close(fd);
     if (res == -1)
         return -errno;
-    return res;
+    return 0;
 }
 
 static int rewrite_listxattr(const char *path, char *list, size_t size) {
@@ -578,7 +576,7 @@ static int rewrite_listxattr(const char *path, char *list, size_t size) {
     close(fd);
     if (res == -1)
         return -errno;
-    return res;
+    return 0;
 }
 
 static int rewrite_removexattr(const char *path, const char *name) {
