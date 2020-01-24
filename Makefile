@@ -5,7 +5,7 @@ CFLAGS = -Wall -O2 -DHAVE_FDATASYNC=1 -DHAVE_SETXATTR=1
 LDFLAGS = 
 
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse3)
-FUSE_LIBS = $(shell pkg-config --libs fuse3)
+FUSE_LIBS = $(shell pkg-config --libs fuse3) -lulockmgr
 
 PCRE_CFLAGS = $(shell pkg-config --cflags libpcre)
 PCRE_LIBS = $(shell pkg-config --libs libpcre)

@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 
 #include <fuse.h>
+#include <ulockmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <sys/file.h>
 #ifdef HAVE_SETXATTR
 #include <sys/xattr.h>
 #endif
@@ -598,43 +600,94 @@ static int rewrite_removexattr(const char *path, const char *name) {
 }
 #endif /* HAVE_SETXATTR */
 
-static struct fuse_operations rewrite_oper = {
-    .init        = rewrite_init,
+static int rewrite_lock(const char *path, struct fuse_file_info *fi, int cmd,
+                        struct flock *lock) {
+    (void) path;
+    return ulockmgr_op(fi->fh, cmd, lock, &fi->lock_owner,
+            sizeof(fi->lock_owner));
+}
 
-    .getattr     = rewrite_getattr,
-    .readlink    = rewrite_readlink,
-    .mknod       = rewrite_mknod,
-    .mkdir       = rewrite_mkdir,
-    .unlink      = rewrite_unlink,
-    .rmdir       = rewrite_rmdir,
-    .symlink     = rewrite_symlink,
-    .rename      = rewrite_rename,
-    .link        = rewrite_link,
-    .chmod       = rewrite_chmod,
-    .chown       = rewrite_chown,
-    .truncate    = rewrite_truncate,
-    .open        = rewrite_open,
-    .read        = rewrite_read,
-    .write       = rewrite_write,
-    .statfs      = rewrite_statfs,
-    .flush       = rewrite_flush,
-    .release     = rewrite_release,
-    .fsync       = rewrite_fsync,
-    .opendir     = rewrite_opendir,
-    .readdir     = rewrite_readdir,
-    .releasedir  = rewrite_releasedir,
-    .access      = rewrite_access,
-    .utimens     = rewrite_utimens,
-    .read_buf    = rewrite_read_buf,
-    .write_buf   = rewrite_write_buf,
-    .fallocate   = rewrite_fallocate,
+static int rewrite_flock(const char *path, struct fuse_file_info *fi, int op) {
+    int res;
+    (void) path;
+
+    res = flock(fi->fh, op);
+
+    if (res == -1)
+        return -errno;
+
+    return 0;
+}
+
+static ssize_t rewrite_copy_file_range(const char *path_in,
+        struct fuse_file_info *fi_in,
+        off_t off_in, const char *path_out,
+        struct fuse_file_info *fi_out,
+        off_t off_out, size_t len, int flags) {
+    ssize_t res;
+    (void) path_in;
+    (void) path_out;
+
+    res = copy_file_range(fi_in->fh, &off_in, fi_out->fh, &off_out, len,
+            flags);
+    if (res == -1)
+        return -errno;
+
+    return res;
+}
+
+static off_t rewrite_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi) {
+    off_t res;
+    (void) path;
+
+    res = lseek(fi->fh, off, whence);
+    if (res == -1)
+        return -errno;
+
+    return res;
+}
+
+static struct fuse_operations rewrite_oper = {
+    .init            = rewrite_init,
+
+    .getattr         = rewrite_getattr,
+    .readlink        = rewrite_readlink,
+    .mknod           = rewrite_mknod,
+    .mkdir           = rewrite_mkdir,
+    .unlink          = rewrite_unlink,
+    .rmdir           = rewrite_rmdir,
+    .symlink         = rewrite_symlink,
+    .rename          = rewrite_rename,
+    .link            = rewrite_link,
+    .chmod           = rewrite_chmod,
+    .chown           = rewrite_chown,
+    .truncate        = rewrite_truncate,
+    .open            = rewrite_open,
+    .read            = rewrite_read,
+    .write           = rewrite_write,
+    .statfs          = rewrite_statfs,
+    .flush           = rewrite_flush,
+    .release         = rewrite_release,
+    .fsync           = rewrite_fsync,
+    .opendir         = rewrite_opendir,
+    .readdir         = rewrite_readdir,
+    .releasedir      = rewrite_releasedir,
+    .access          = rewrite_access,
+    .utimens         = rewrite_utimens,
+    .read_buf        = rewrite_read_buf,
+    .write_buf       = rewrite_write_buf,
+    .fallocate       = rewrite_fallocate,
 
 #ifdef HAVE_SETXATTR
-    .setxattr    = rewrite_setxattr,
-    .getxattr    = rewrite_getxattr,
-    .listxattr   = rewrite_listxattr,
-    .removexattr = rewrite_removexattr,
+    .setxattr        = rewrite_setxattr,
+    .getxattr        = rewrite_getxattr,
+    .listxattr       = rewrite_listxattr,
+    .removexattr     = rewrite_removexattr,
 #endif
+    .lock            = rewrite_lock,
+    .flock           = rewrite_flock,
+    .copy_file_range = rewrite_copy_file_range,
+    .lseek           = rewrite_lseek,
 };
 
 int main(int argc, char *argv[]) {
