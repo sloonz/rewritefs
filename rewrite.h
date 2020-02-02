@@ -12,7 +12,7 @@ extern pthread_rwlock_t rwlock;
 #define WLOCK(expr) { \
     pthread_rwlock_wrlock(&rwlock); \
     uid_t _euid = geteuid(); gid_t _egid = getegid(); mode_t _umask = umask(fuse_get_context()->umask); \
-    seteuid(fuse_get_context()->uid); setegid(fuse_get_context()->gid); \
+    setegid(fuse_get_context()->gid); seteuid(fuse_get_context()->uid); \
     expr; \
     seteuid(_euid); setegid(_egid); umask(_umask); \
     pthread_rwlock_unlock(&rwlock); \
