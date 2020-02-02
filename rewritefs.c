@@ -304,7 +304,7 @@ static int rewrite_chmod(const char *path, mode_t mode,
         if (new_path == NULL)
             return -ENOMEM;
 
-        RLOCK(res = fchmodat(orig_fd(), new_path, mode, AT_SYMLINK_NOFOLLOW));
+        RLOCK(res = fchmodat(orig_fd(), new_path, mode, 0));
         free(new_path);
     } else {
         RLOCK(res = fchmod(fi->fh, mode));
