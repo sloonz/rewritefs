@@ -1,4 +1,4 @@
-(develop):
+21 February 2020:
 
  * Update to FUSE 3
 
