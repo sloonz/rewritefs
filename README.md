@@ -125,6 +125,14 @@ for other users !)
 Don't forget to activate pam_mount in your pam configuration too. This is
 distribution-dependent ; you have to refer to the corresponding documentation.
 
+## Caveat Emptor
+
+Using both the original and the rewritten filesystem at the same time is
+possible, but it is not advised. For example, while file locking works fine
+both in the original and the rewritten filesystem, two exclusives lock
+may be obtained on the same file: one on the original file, another on
+the rewritten file.
+
 ## FAQ
 
 **Q:** I installed rewritefs with the default config, and now `ls` returns me something like that :

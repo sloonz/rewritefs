@@ -14,7 +14,6 @@
 #define _GNU_SOURCE
 
 #include <fuse.h>
-#include <ulockmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -600,13 +599,6 @@ static int rewrite_removexattr(const char *path, const char *name) {
 }
 #endif /* HAVE_SETXATTR */
 
-static int rewrite_lock(const char *path, struct fuse_file_info *fi, int cmd,
-                        struct flock *lock) {
-    (void) path;
-    return ulockmgr_op(fi->fh, cmd, lock, &fi->lock_owner,
-            sizeof(fi->lock_owner));
-}
-
 static int rewrite_flock(const char *path, struct fuse_file_info *fi, int op) {
     int res;
     (void) path;
@@ -684,7 +676,6 @@ static struct fuse_operations rewrite_oper = {
     .listxattr       = rewrite_listxattr,
     .removexattr     = rewrite_removexattr,
 #endif
-    .lock            = rewrite_lock,
     .flock           = rewrite_flock,
     .copy_file_range = rewrite_copy_file_range,
     .lseek           = rewrite_lseek,
