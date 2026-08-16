@@ -7,8 +7,8 @@ LDFLAGS =
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse3)
 FUSE_LIBS = $(shell pkg-config --libs fuse3)
 
-PCRE_CFLAGS = $(shell pkg-config --cflags libpcre)
-PCRE_LIBS = $(shell pkg-config --libs libpcre)
+PCRE_CFLAGS = $(shell pkg-config --cflags libpcre2-8)
+PCRE_LIBS = $(shell pkg-config --libs libpcre2-8)
 
 all: rewritefs
 

@@ -16,7 +16,7 @@ The short story: I needed a tool to manage my dotfiles\. I forked Luc Dufrene\'s
 Unfortunately, I eventually run into LD_PRELOAD problems (mainly with programs using dlopen like VirtualBox and screen)\. So I decided to rewrite it using FUSE, and make it more generic\.
 .
 .SH "Dependencies"
-fuse3 & pcre\. That\'s all\.
+fuse3 & pcre2\. That\'s all\.
 .
 .P
 To use contexts, you need /proc/(pid)/cmdline\. But don\'t use contexts if you can avoid it !

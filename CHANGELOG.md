@@ -1,3 +1,7 @@
+15 August 2026:
+
+ * Port from PCRE1 to PCRE2 (build now requires `libpcre2-8`)
+
 21 February 2020:
 
  * Update to FUSE 3
