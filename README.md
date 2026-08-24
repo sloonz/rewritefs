@@ -30,7 +30,7 @@ FUSE, and make it more generic.
 
 ## Dependencies
 
-fuse3 & pcre. That's all.
+fuse3 & pcre2. That's all.
 
 To use contexts, you need /proc/(pid)/cmdline. But don't use contexts if you
 can avoid it !

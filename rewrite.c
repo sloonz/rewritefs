@@ -15,19 +15,18 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
-#include <pcre.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 
 #include "rewrite.h"
 
 #define DEBUG(lvl, x...) if(config.verbose >= lvl) fprintf(stderr, x)
 
 /*
- * Type definiton 
+ * Type definiton
  */
 struct regexp {
-    pcre *regexp;
-    pcre_extra *extra;
-    int captures;
+    pcre2_code *regexp;
     int replace_all;
     char *raw;
 };
@@ -168,12 +167,12 @@ static void parse_string(FILE *fd, char **string, char sep) {
 /* Consume the regexp (until reaching end-of-flags) and put it in regexp */
 static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     char *regexp_body;
-    int regexp_flags = 0;
+    uint32_t regexp_flags = 0;
     int replace_all = 0;
-    const char *error;
-    int offset;
+    int error;
+    PCRE2_SIZE offset;
     int c;
-    
+
     /* Determine separator */
     if(sep == 0) {
         sep = getc(fd);
@@ -197,13 +196,13 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
     while(!isspace(c = getc(fd))) {
         switch(c) {
         case 'i':
-            regexp_flags |= PCRE_CASELESS;
+            regexp_flags |= PCRE2_CASELESS;
             break;
         case 'x':
-            regexp_flags |= PCRE_EXTENDED;
+            regexp_flags |= PCRE2_EXTENDED;
             break;
         case 'u':
-            regexp_flags |= PCRE_UCP | PCRE_UTF8;
+            regexp_flags |= PCRE2_UCP | PCRE2_UTF;
             break;
         case 'g':
             replace_all = 1;
@@ -222,19 +221,16 @@ static void parse_regexp(FILE *fd, struct regexp **regexp, char sep) {
 
     (*regexp)->replace_all = replace_all;
     
-    (*regexp)->regexp = pcre_compile(regexp_body, regexp_flags, &error, &offset, NULL);
+    (*regexp)->regexp = pcre2_compile((PCRE2_SPTR)regexp_body, PCRE2_ZERO_TERMINATED,
+                                      regexp_flags, &error, &offset, NULL);
     if((*regexp)->regexp == NULL) {
-        fprintf(stderr, "Invalid regular expression: %s\n. Regular expression was :\n  %s\n", error, regexp_body);
+        PCRE2_UCHAR message[256];
+        pcre2_get_error_message(error, message, sizeof(message));
+        fprintf(stderr, "Invalid regular expression at offset %zu: %s\n. Regular expression was :\n  %s\n",
+                (size_t)offset, message, regexp_body);
         exit(1);
     }
-    
-    (*regexp)->extra = pcre_study((*regexp)->regexp, 0, &error);
-    if((*regexp)->extra == NULL && error != NULL) {
-        fprintf(stderr, "Can't compile regular expression: %s\n. Regular expression was :\n  %s\n", error, regexp_body);
-        exit(1);
-    }
-    
-    pcre_fullinfo((*regexp)->regexp, (*regexp)->extra, PCRE_INFO_CAPTURECOUNT, &(*regexp)->captures);
+
     (*regexp)->raw = regexp_body;
 }
 
@@ -534,23 +530,22 @@ done:
 }
 
 char *regexp_replace(struct regexp *re, const char *subject, struct replacement_template *tpl) {
-    int nvec, repl_sz, *ovector = NULL;
+    int repl_sz;
     char *result, *repl, *repl_buf = NULL, *suffix_buf = NULL;
     const char *suffix;
-    
-    /* Fill ovector */
-    nvec = (re->captures + 1) * 3;
-    ovector = calloc(nvec, sizeof(int));
-    if(ovector == NULL) {
+    PCRE2_SIZE *ovector;
+    pcre2_match_data *match_data;
+
+    match_data = pcre2_match_data_create_from_pattern(re->regexp, NULL);
+    if(match_data == NULL) {
         result = NULL;
         goto end;
     }
 
-    int scount = pcre_exec(re->regexp, re->extra, subject,
-                           strlen(subject), 0, 0, ovector, nvec);
+    int scount = pcre2_match(re->regexp, (PCRE2_SPTR)subject, strlen(subject),
+                             0, 0, match_data, NULL);
 
-    if(scount == PCRE_ERROR_NOMATCH)
-        return strdup(subject);
+    ovector = pcre2_get_ovector_pointer(match_data);
 
     /* Replace backreferences */
     if(tpl->nparts > 1 || tpl->parts[0].data == NULL) {
@@ -619,7 +614,7 @@ char *regexp_replace(struct regexp *re, const char *subject, struct replacement_
 end:
     free(repl_buf);
     free(suffix_buf);
-    free(ovector);
+    pcre2_match_data_free(match_data);
 
     return result;
 }
@@ -645,13 +640,27 @@ char *apply_rule(const char *path, struct rewrite_rule *rule) {
     return rewritten;
 }
 
+static int regexp_matches(struct regexp *re, const char *subject, size_t len) {
+    pcre2_match_data *match_data;
+    int res;
+
+    match_data = pcre2_match_data_create(1, NULL);
+    if(match_data == NULL)
+        return PCRE2_ERROR_NOMEMORY;
+
+    res = pcre2_match(re->regexp, (PCRE2_SPTR)subject, len, 0, 0, match_data, NULL);
+    pcre2_match_data_free(match_data);
+
+    return res;
+}
+
 char *rewrite(const char *path) {
     struct rewrite_context *ctx;
     struct rewrite_rule *rule;
     char *caller = NULL;
-    
+
     int res;
-    
+
     DEBUG(3, "%s:\n", path);
     
     for(ctx = config.contexts; ctx != NULL; ctx = ctx->next) {
@@ -663,11 +672,10 @@ char *rewrite(const char *path) {
                     continue;
                 }
             }
-            res = pcre_exec(ctx->cmdline->regexp, ctx->cmdline->extra, caller,
-                strlen(caller), 0, 0, NULL, 0);
+            res = regexp_matches(ctx->cmdline, caller, strlen(caller));
             if(res < 0) {
-                if(res != PCRE_ERROR_NOMATCH)
-                    fprintf(stderr, "WARNING: pcre_exec returned %d\n", res);
+                if(res != PCRE2_ERROR_NOMATCH)
+                    fprintf(stderr, "WARNING: pcre2_match returned %d\n", res);
                 DEBUG(3, "  CTX NOMATCH \"%s\"\n", ctx->cmdline->raw);
                 continue;
             }
@@ -677,11 +685,10 @@ char *rewrite(const char *path) {
         }
         
         for(rule = ctx->rules; rule != NULL; rule = rule->next) {
-            res = pcre_exec(rule->filename_regexp->regexp, rule->filename_regexp->extra, path + 1,
-                strlen(path) - 1, 0, 0, NULL, 0);
+            res = regexp_matches(rule->filename_regexp, path + 1, strlen(path) - 1);
             if(res < 0) {
-                if(res != PCRE_ERROR_NOMATCH)
-                    fprintf(stderr, "WARNING: pcre_exec returned %d\n", res);
+                if(res != PCRE2_ERROR_NOMATCH)
+                    fprintf(stderr, "WARNING: pcre2_match returned %d\n", res);
                 DEBUG(3, "    RULE NOMATCH \"%s\"\n", rule->filename_regexp->raw);
             } else {
                 DEBUG(3, "    RULE OK \"%s\" \"%s\"\n", rule->filename_regexp->raw, rule->rewritten_path ? rule->rewritten_path->raw : "(don't rewrite)");
